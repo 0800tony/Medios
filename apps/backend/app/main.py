@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import json
 from pathlib import Path
 from uuid import UUID
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
@@ -10,12 +11,28 @@ from .auth import create_token, current_user, hash_password, verify_password
 from .config import get_settings
 from .database import create_db_and_tables, get_session
 from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
-from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, index_text, radar_context, relevant_items
-from .models import Client, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, Project, ProjectStatus, StrategyResult, User, now
-from .schemas import ClientIn, ClientOut, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, RegisterIn, TokenOut, UserOut
+from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
+from .link_reader import read_link
+from .models import Client, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, Project, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyResult, User, now
+from .schemas import ClientIn, ClientOut, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut
 from .strategy import analyze
 
 settings = get_settings()
+
+
+def save_knowledge_vector(item: KnowledgeItem, session: Session) -> None:
+    try:
+        vector = embed_text(item.indexed_text or index_text(item))
+    except Exception:
+        vector = None
+    if not vector:
+        return
+    stored = session.exec(select(KnowledgeVector).where(KnowledgeVector.knowledge_item_id == item.id)).first()
+    if stored:
+        stored.embedding_json = json.dumps(vector); stored.model = settings.openai_embedding_model; stored.updated_at = now()
+    else:
+        stored = KnowledgeVector(knowledge_item_id=item.id, embedding_json=json.dumps(vector), model=settings.openai_embedding_model)
+    session.add(stored); session.commit()
 
 
 @asynccontextmanager
@@ -80,9 +97,23 @@ def list_knowledge(q: str = Query(default="", max_length=200), user: User = Depe
 @app.post("/api/knowledge/links", response_model=KnowledgeOut, status_code=201)
 def add_knowledge_link(data: KnowledgeLinkIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
     values = data.model_dump(); values["url"] = str(values["url"])
-    item = KnowledgeItem(**values, owner_id=user.id, ai_summary=data.notes, index_status="manual")
-    item.indexed_text = index_text(item)
+    try:
+        page = read_link(values["url"], include_body=data.kind == KnowledgeKind.article)
+    except Exception:
+        page = {"title": "", "source": "", "description": "", "text": "", "final_url": values["url"]}
+    values["url"] = page.get("final_url") or values["url"]
+    if not values["source"]:
+        values["source"] = page.get("source", "")
+    item = KnowledgeItem(
+        **values,
+        owner_id=user.id,
+        ai_summary=data.notes or page.get("description", ""),
+        ai_observations="Contenido web leído e indexado automáticamente." if page.get("text") else "Lectura automática pendiente; se indexaron los datos aportados.",
+        index_status="indexed" if page.get("text") else "manual",
+    )
+    item.indexed_text = f"{index_text(item)} {page.get('title', '')} {page.get('text', '')}".strip()
     session.add(item); session.commit(); session.refresh(item)
+    save_knowledge_vector(item, session)
     return item
 
 
@@ -108,6 +139,7 @@ async def add_knowledge_photo(
     for key, value in visual.items(): setattr(item, key, value)
     item.indexed_text = index_text(item)
     session.add(item); session.commit(); session.refresh(item)
+    save_knowledge_vector(item, session)
     return item
 
 
@@ -115,6 +147,35 @@ def owned_knowledge(item_id: UUID, user: User, session: Session) -> KnowledgeIte
     item = session.get(KnowledgeItem, item_id)
     if not item or item.owner_id != user.id:
         raise HTTPException(404, "Elemento del Radar no encontrado")
+    return item
+
+
+@app.post("/api/knowledge/{item_id}/reindex", response_model=KnowledgeOut)
+def reindex_knowledge(item_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    item = owned_knowledge(item_id, user, session)
+    if item.kind == KnowledgeKind.photo:
+        if not item.storage_path or not Path(item.storage_path).exists():
+            raise HTTPException(404, "Foto no encontrada")
+        try:
+            visual = analyze_photo(Path(item.storage_path).read_bytes(), item.content_type, item.title, item.notes)
+            for key, value in visual.items(): setattr(item, key, value)
+        except Exception:
+            item.index_status = "failed"; item.ai_observations = "Análisis visual pendiente."
+    else:
+        try:
+            page = read_link(item.url, include_body=item.kind == KnowledgeKind.article)
+            item.url = page.get("final_url") or item.url
+            item.source = item.source or page.get("source", "")
+            item.ai_summary = item.notes or page.get("description", "")
+            item.ai_observations = "Contenido web leído e indexado automáticamente."
+            item.index_status = "indexed"
+            item.indexed_text = f"{index_text(item)} {page.get('title', '')} {page.get('text', '')}".strip()
+        except Exception:
+            item.index_status = "failed"; item.ai_observations = "No se pudo volver a leer el enlace."
+    if item.kind == KnowledgeKind.photo:
+        item.indexed_text = index_text(item)
+    session.add(item); session.commit(); session.refresh(item)
+    save_knowledge_vector(item, session)
     return item
 
 
@@ -131,6 +192,9 @@ def delete_knowledge(item_id: UUID, user: User = Depends(current_user), session:
     item = owned_knowledge(item_id, user, session)
     if item.storage_path:
         Path(item.storage_path).unlink(missing_ok=True)
+    for link in session.exec(select(ProjectKnowledgeLink).where(ProjectKnowledgeLink.knowledge_item_id == item.id)).all(): session.delete(link)
+    vector = session.exec(select(KnowledgeVector).where(KnowledgeVector.knowledge_item_id == item.id)).first()
+    if vector: session.delete(vector)
     session.delete(item); session.commit()
 
 
@@ -140,6 +204,50 @@ def owned_project(project_id: UUID, user: User, session: Session) -> Project:
     if not project:
         raise HTTPException(404, "Proyecto no encontrado")
     return project
+
+
+def project_embedding(project: Project, session: Session) -> list[float] | None:
+    signature = f"{project.name}\n{project.objective}\n{project.brief}".strip()
+    stored = session.exec(select(ProjectRadarVector).where(ProjectRadarVector.project_id == project.id)).first()
+    if stored and stored.signature == signature and stored.model == settings.openai_embedding_model:
+        return json.loads(stored.embedding_json)
+    try:
+        vector = embed_text(signature)
+    except Exception:
+        return None
+    if not vector:
+        return None
+    if stored:
+        stored.signature = signature; stored.embedding_json = json.dumps(vector); stored.model = settings.openai_embedding_model; stored.updated_at = now()
+    else:
+        stored = ProjectRadarVector(project_id=project.id, signature=signature, embedding_json=json.dumps(vector), model=settings.openai_embedding_model)
+    session.add(stored); session.commit()
+    return vector
+
+
+def sync_project_radar(project: Project, user: User, session: Session) -> list[tuple[ProjectKnowledgeLink, KnowledgeItem]]:
+    items = session.exec(select(KnowledgeItem).where(KnowledgeItem.owner_id == user.id)).all()
+    item_map = {item.id: item for item in items}
+    vectors = session.exec(select(KnowledgeVector).where(KnowledgeVector.knowledge_item_id.in_(list(item_map)))).all() if item_map else []
+    vector_map = {str(vector.knowledge_item_id): json.loads(vector.embedding_json) for vector in vectors}
+    matches = relevant_matches(project, items, vector_map, project_embedding(project, session))
+    links = session.exec(select(ProjectKnowledgeLink).where(ProjectKnowledgeLink.project_id == project.id)).all()
+    link_map = {link.knowledge_item_id: link for link in links}
+    for item, score, reason in matches:
+        link = link_map.get(item.id)
+        if not link:
+            link = ProjectKnowledgeLink(project_id=project.id, knowledge_item_id=item.id, score=score, reason=reason)
+            session.add(link); links.append(link); link_map[item.id] = link
+        else:
+            link.score = score; link.reason = reason; link.updated_at = now(); session.add(link)
+    session.commit()
+    valid = [(link, item_map[link.knowledge_item_id]) for link in links if link.knowledge_item_id in item_map]
+    order = {RadarLinkStatus.approved: 0, RadarLinkStatus.suggested: 1, RadarLinkStatus.dismissed: 2}
+    return sorted(valid, key=lambda pair: (order[pair[0].status], -pair[0].score))
+
+
+def suggestion_output(link: ProjectKnowledgeLink, item: KnowledgeItem) -> RadarSuggestionOut:
+    return RadarSuggestionOut(item=KnowledgeOut.model_validate(item), status=link.status, score=link.score, reason=link.reason)
 
 
 @app.get("/api/projects", response_model=list[ProjectOut])
@@ -163,11 +271,21 @@ def get_project(project_id: UUID, user: User = Depends(current_user), session: S
     return owned_project(project_id, user, session)
 
 
-@app.get("/api/projects/{project_id}/radar", response_model=list[KnowledgeOut])
+@app.get("/api/projects/{project_id}/radar", response_model=list[RadarSuggestionOut])
 def project_radar(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
-    items = session.exec(select(KnowledgeItem).where(KnowledgeItem.owner_id == user.id)).all()
-    return relevant_items(project, items)
+    return [suggestion_output(link, item) for link, item in sync_project_radar(project, user, session)]
+
+
+@app.patch("/api/projects/{project_id}/radar/{item_id}", response_model=RadarSuggestionOut)
+def decide_project_radar(project_id: UUID, item_id: UUID, data: RadarDecisionIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    item = owned_knowledge(item_id, user, session)
+    link = session.exec(select(ProjectKnowledgeLink).where(ProjectKnowledgeLink.project_id == project.id, ProjectKnowledgeLink.knowledge_item_id == item.id)).first()
+    if not link:
+        link = ProjectKnowledgeLink(project_id=project.id, knowledge_item_id=item.id)
+    link.status = data.status; link.updated_at = now(); session.add(link); session.commit(); session.refresh(link)
+    return suggestion_output(link, item)
 
 
 @app.post("/api/projects/{project_id}/documents", response_model=ProjectOut, status_code=201)
@@ -216,8 +334,8 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             f"{('REFERENCIA' if item.kind.value == 'reference' else 'NOTA DEL CLIENTE')}: {item.title}\nFuente: {item.source or 'No indicada'}\nURL: {item.url or 'No aplica'}\nContenido: {item.content}"
             for item in project.evidence_items
         )
-        knowledge = session.exec(select(KnowledgeItem).where(KnowledgeItem.owner_id == user.id)).all()
-        selected_radar = relevant_items(project, knowledge)
+        suggestions = sync_project_radar(project, user, session)
+        selected_radar = [item for link, item in suggestions if link.status == RadarLinkStatus.approved]
         data = analyze(project, f"{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}")
         existing = project.result
         if existing:

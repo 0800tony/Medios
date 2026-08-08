@@ -3,19 +3,20 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
-import { EvidenceItem, KnowledgeItem, Project, request } from "@/lib/api";
+import { EvidenceItem, Project, RadarSuggestion, request } from "@/lib/api";
 
 type EvidenceMode = "file" | "reference" | "client_note";
 
 export default function ProjectPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<Project | null>(null);
-  const [radar, setRadar] = useState<KnowledgeItem[]>([]);
+  const [radar, setRadar] = useState<RadarSuggestion[]>([]);
   const [mode, setMode] = useState<EvidenceMode>("file");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = () => request<Project>(`/api/projects/${params.id}`).then(setProject);
-  useEffect(() => { load(); request<KnowledgeItem[]>(`/api/projects/${params.id}/radar`).then(setRadar); }, []);
+  const loadRadar = () => request<RadarSuggestion[]>(`/api/projects/${params.id}/radar`).then(setRadar);
+  useEffect(() => { load(); loadRadar(); }, []);
 
   async function upload(file: File) {
     setBusy(true); setError("");
@@ -57,8 +58,19 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     finally { setBusy(false); }
   }
 
+  async function decideRadar(suggestion: RadarSuggestion, status: "approved" | "dismissed") {
+    setBusy(true); setError("");
+    try {
+      await request(`/api/projects/${params.id}/radar/${suggestion.item.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await loadRadar();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
   if (!project) return <main className="shell"><Nav/><p>Cargando…</p></main>;
   const evidenceCount = project.documents.length + project.evidence_items.length;
+  const approvedRadarCount = radar.filter(suggestion => suggestion.status === "approved").length;
+  const sourceCount = evidenceCount + approvedRadarCount;
 
   return <main className="shell">
     <Nav/>
@@ -120,11 +132,11 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         <p className="eyebrow">Punto de partida</p><h3>Objetivo declarado</h3><p>{project.objective || "Sin definir"}</p>
         <h3>Brief</h3><p className="muted">{project.brief || "Sin contexto adicional"}</p>
         <hr/><p className="muted"><strong>OLIVA Strategy</strong> tratará los archivos, enlaces y notas como fuentes diferenciadas. Una opinión del cliente no se convertirá automáticamente en un hecho.</p>
-        {radar.length > 0 && <div className="radar-suggestions"><p className="eyebrow">Radar aplicable</p>{radar.map(item => <div key={item.id}><strong>{item.title}</strong><small>{item.kind} · {item.source || "Radar OLIVA"}</small></div>)}</div>}
+        {radar.length > 0 && <div className="radar-suggestions"><p className="eyebrow">Radar aplicable</p><p className="radar-help">La IA encontró estas conexiones. Aprobá las que deban entrar al próximo análisis.</p>{radar.map(suggestion => <div className={`radar-suggestion ${suggestion.status}`} key={suggestion.item.id}><span className="match-score">{suggestion.score}% afinidad</span><strong>{suggestion.item.title}</strong><small>{suggestion.reason}</small><small>{suggestion.item.kind} · {suggestion.item.source || "Radar OLIVA"}</small><div className="suggestion-actions"><button className={suggestion.status === "approved" ? "selected" : ""} disabled={busy} onClick={() => decideRadar(suggestion, "approved")}>{suggestion.status === "approved" ? "✓ Aplicada" : "Aplicar"}</button><button className={suggestion.status === "dismissed" ? "selected dismiss" : ""} disabled={busy} onClick={() => decideRadar(suggestion, "dismissed")}>{suggestion.status === "dismissed" ? "Descartada" : "Descartar"}</button></div></div>)}</div>}
       </aside>
     </section>
 
     {error && <p className="error">{error}</p>}
-    <div className="analyze-bar"><div><strong>{evidenceCount} fuentes disponibles</strong><p className="muted">Podés volver a analizar cuando agregues nueva evidencia.</p></div><button className="btn lime" disabled={busy} onClick={analyze}>{busy ? "Analizando…" : "Analizar con OLIVA Strategy →"}</button></div>
+    <div className="analyze-bar"><div><strong>{sourceCount} {sourceCount === 1 ? "fuente disponible" : "fuentes disponibles"}</strong><p className="muted">Incluye evidencia propia y referencias del Radar que hayas aprobado.</p></div><button className="btn lime" disabled={busy} onClick={analyze}>{busy ? "Analizando…" : "Analizar con OLIVA Strategy →"}</button></div>
   </main>;
 }

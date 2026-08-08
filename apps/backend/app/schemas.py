@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, model_validator
-from .models import EvidenceKind, KnowledgeKind, ProjectStatus
+from .models import EvidenceKind, KnowledgeKind, ProjectStatus, RadarLinkStatus
 
 
 class RegisterIn(BaseModel):
@@ -116,6 +116,23 @@ class KnowledgeOut(BaseModel):
     index_status: str
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class RadarDecisionIn(BaseModel):
+    status: RadarLinkStatus
+
+    @model_validator(mode="after")
+    def validate_status(self):
+        if self.status == RadarLinkStatus.suggested:
+            raise ValueError("Elegí aplicar o descartar la sugerencia")
+        return self
+
+
+class RadarSuggestionOut(BaseModel):
+    item: KnowledgeOut
+    status: RadarLinkStatus
+    score: int
+    reason: str
 
 
 class ResultOut(BaseModel):

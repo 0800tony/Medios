@@ -1,4 +1,5 @@
 import os
+from unittest.mock import patch
 os.environ["DATABASE_URL"] = "sqlite:///./test_oliva.db"
 os.environ["SECRET_KEY"] = "test-secret"
 
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import SQLModel
 from app.database import engine
 from app.main import app
+from app.link_reader import extract_page
 
 
 def setup_function():
@@ -32,8 +34,11 @@ def test_mvp_flow():
         project = client.post("/api/projects", headers=headers, json={"name": "Lanzamiento", "client_id": created_client.json()["id"], "brief": "Necesitamos crecer", "objective": "Aumentar consideración"})
         assert project.status_code == 201
         project_id = project.json()["id"]
-        radar_link = client.post("/api/knowledge/links", headers=headers, json={"kind": "article", "title": "Consideracion y confianza", "url": "https://example.com/radar", "source": "Radar Demo", "notes": "La consideracion crece con señales de confianza.", "tags": "consideracion confianza"})
+        page = {"title": "Confianza en retail", "source": "Radar Demo", "description": "Señales que construyen confianza", "text": "La exhibición transparente aumenta la consideración.", "final_url": "https://example.com/radar"}
+        with patch("app.main.read_link", return_value=page):
+            radar_link = client.post("/api/knowledge/links", headers=headers, json={"kind": "article", "title": "Consideracion y confianza", "url": "https://example.com/radar", "source": "Radar Demo", "notes": "La consideracion crece con señales de confianza.", "tags": "consideracion confianza"})
         assert radar_link.status_code == 201
+        assert radar_link.json()["index_status"] == "indexed"
         radar_id = radar_link.json()["id"]
         radar_photo = client.post("/api/knowledge/photos", headers=headers, data={"title": "Vidriera de referencia", "notes": "Diseño de retail", "tags": "retail vidriera"}, files={"file": ("vidriera.png", b"\x89PNG\r\n\x1a\n", "image/png")})
         assert radar_photo.status_code == 201
@@ -41,7 +46,12 @@ def test_mvp_flow():
         radar_photo_id = radar_photo.json()["id"]
         assert client.get(f"/api/knowledge/{radar_photo_id}/media", headers=headers).content.startswith(b"\x89PNG")
         assert client.get("/api/knowledge?" + "q=confianza", headers=headers).json()[0]["title"] == "Consideracion y confianza"
-        assert client.get(f"/api/projects/{project_id}/radar", headers=headers).json()[0]["id"] == radar_id
+        suggestion = client.get(f"/api/projects/{project_id}/radar", headers=headers).json()[0]
+        assert suggestion["item"]["id"] == radar_id
+        assert suggestion["status"] == "suggested"
+        approved = client.patch(f"/api/projects/{project_id}/radar/{radar_id}", headers=headers, json={"status": "approved"})
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "approved"
         upload = client.post(f"/api/projects/{project_id}/documents", headers=headers, files={"file": ("investigacion.txt", b"Las personas valoran la confianza.", "text/plain")})
         assert upload.status_code == 201
         reference = client.post(f"/api/projects/{project_id}/evidence", headers=headers, json={"kind": "reference", "title": "Tendencias de confianza", "url": "https://example.com/articulo", "source": "Medio Demo", "content": "Contexto sectorial relevante."})
@@ -68,3 +78,12 @@ def test_project_is_private():
         headers = auth(client)
         assert client.get("/api/projects").status_code == 401
         assert client.get("/api/projects", headers=headers).status_code == 200
+
+
+def test_extracts_readable_page_content():
+    html = b"""<html><head><title>Retail humano</title><meta property='og:site_name' content='Medio Demo'><meta name='description' content='Una tendencia relevante'></head><body><nav>Ignorar menu</nav><main><h1>Experiencias cercanas</h1><p>Las personas valoran espacios simples.</p></main><script>ignorar()</script></body></html>"""
+    page = extract_page(html, "text/html")
+    assert page["title"] == "Retail humano"
+    assert page["source"] == "Medio Demo"
+    assert "espacios simples" in page["text"]
+    assert "Ignorar menu" not in page["text"]

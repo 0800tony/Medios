@@ -56,6 +56,13 @@ export default function KnowledgePage() {
     finally { setBusy(false); }
   }
 
+  async function reindex(item: KnowledgeItem) {
+    setBusy(true); setError("");
+    try { await request(`/api/knowledge/${item.id}/reindex`, { method: "POST" }); await load(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
   return <main className="shell">
     <Nav/>
     <section className="radar-hero"><div><p className="eyebrow">Memoria transversal</p><h1>Radar OLIVA</h1></div><p>Guardá señales, referencias y observaciones del mundo real. La IA las indexa y recupera cuando encuentra relación con un proyecto.</p></section>
@@ -68,9 +75,10 @@ export default function KnowledgePage() {
           <div className="field"><label>Título</label><input name="title" required placeholder={mode === "article" ? "Título del artículo" : "Título del video"}/></div>
           <div className="field"><label>Enlace</label><input name="url" type="url" required placeholder="https://…"/></div>
           <div className="field"><label>Medio, autor o canal</label><input name="source" placeholder="Fuente"/></div>
-          <div className="field"><label>Qué te resultó interesante</label><textarea name="notes" placeholder="Ideas, citas, patrones o motivos por los que conviene recordarlo…"/></div>
+          <div className="field"><label>{mode === "video" ? "Resumen, ideas o transcripción" : "Qué te resultó interesante"}</label><textarea name="notes" placeholder={mode === "video" ? "Pegá una transcripción o anotá las ideas centrales del video…" : "Ideas, citas, patrones o motivos por los que conviene recordarlo…"}/></div>
           <div className="field"><label>Etiquetas</label><input name="tags" placeholder="retail, alimentos, tendencias, experiencia"/></div>
           <button className="btn lime" disabled={busy}>{busy ? "Indexando…" : "Guardar e indexar"}</button>
+          <p className="muted smallprint">Intentamos leer automáticamente el título, la descripción y el contenido público del enlace. Tus notas siempre tienen prioridad.</p>
         </form> : <form onSubmit={addPhoto}>
           <div className="field"><label>Título</label><input name="title" required placeholder="Ej. Stand destacado en feria"/></div>
           <div className="field"><label>Foto</label><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required/></div>
@@ -88,7 +96,7 @@ export default function KnowledgePage() {
         {visible.length === 0 ? <div className="empty"><h3>{items.length ? "No encontramos coincidencias" : "Todavía no hay señales"}</h3><p className="muted">Los artículos, videos y fotos que cargues aparecerán acá.</p></div> : <div className="radar-grid">
           {visible.map(item => <article className="radar-card" key={item.id}>
             {item.kind === "photo" ? <Photo item={item}/> : <div className={`radar-cover ${item.kind}`}><span>{item.kind === "article" ? "ARTÍCULO" : "VIDEO"}</span></div>}
-            <div className="radar-body"><div className="radar-meta"><span>{item.kind}</span><span>{item.index_status === "indexed" ? "IA indexada" : "Indexación manual"}</span></div><h3>{item.title}</h3><p className="muted">{item.ai_summary || item.notes || item.source}</p>{item.tags && <p className="tags">{item.tags}</p>}<div className="radar-actions">{item.url && <a href={item.url} target="_blank" rel="noreferrer">Abrir ↗</a>}<button onClick={() => remove(item)}>Eliminar</button></div></div>
+            <div className="radar-body"><div className="radar-meta"><span>{item.kind}</span><span>{item.index_status === "indexed" ? "Contenido indexado" : item.index_status === "failed" ? "Revisión pendiente" : "Indexación manual"}</span></div><h3>{item.title}</h3><p className="muted">{item.ai_summary || item.notes || item.source}</p>{item.tags && <p className="tags">{item.tags}</p>}<div className="radar-actions">{item.url && <a href={item.url} target="_blank" rel="noreferrer">Abrir ↗</a>}<button onClick={() => reindex(item)} disabled={busy}>Reindexar</button><button onClick={() => remove(item)}>Eliminar</button></div></div>
           </article>)}
         </div>}
       </div>

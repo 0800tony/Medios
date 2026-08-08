@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 from uuid import UUID, uuid4
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -25,6 +26,12 @@ class KnowledgeKind(str, Enum):
     article = "article"
     video = "video"
     photo = "photo"
+
+
+class RadarLinkStatus(str, Enum):
+    suggested = "suggested"
+    approved = "approved"
+    dismissed = "dismissed"
 
 
 class User(SQLModel, table=True):
@@ -102,6 +109,35 @@ class KnowledgeItem(SQLModel, table=True):
     index_status: str = "manual"
     owner_id: UUID = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=now)
+
+
+class KnowledgeVector(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    knowledge_item_id: UUID = Field(foreign_key="knowledgeitem.id", unique=True, index=True)
+    embedding_json: str
+    model: str
+    updated_at: datetime = Field(default_factory=now)
+
+
+class ProjectRadarVector(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", unique=True, index=True)
+    signature: str
+    embedding_json: str
+    model: str
+    updated_at: datetime = Field(default_factory=now)
+
+
+class ProjectKnowledgeLink(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("project_id", "knowledge_item_id", name="uq_project_knowledge"),)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    knowledge_item_id: UUID = Field(foreign_key="knowledgeitem.id", index=True)
+    status: RadarLinkStatus = Field(default=RadarLinkStatus.suggested, index=True)
+    score: int = 0
+    reason: str = ""
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
 
 
 class StrategyResult(SQLModel, table=True):

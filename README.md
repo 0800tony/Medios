@@ -10,6 +10,9 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - biblioteca de evidencia con enlaces externos y notas de reuniones o entrevistas con el cliente;
 - Radar OLIVA para indexar artículos, videos y fotografías que puedan reutilizarse entre proyectos;
 - análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;
+- lectura protegida del contenido público de artículos y metadatos de videos;
+- búsqueda híbrida: coincidencia temática local y similitud semántica mediante embeddings cuando hay una API key;
+- sugerencias por proyecto con afinidad, motivo y decisión humana de aplicar o descartar;
 - análisis con OpenAI y modo local explícito cuando no hay API key;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
 - PostgreSQL, Docker Compose y tests de flujo crítico.
@@ -63,9 +66,11 @@ npm run build
 | `GET` | `/api/knowledge` | Buscar la memoria global Radar OLIVA |
 | `POST` | `/api/knowledge/links` | Indexar un artículo o video |
 | `POST` | `/api/knowledge/photos` | Cargar e indexar una fotografía |
+| `POST` | `/api/knowledge/{id}/reindex` | Volver a leer o analizar una señal |
 | `GET` | `/api/knowledge/{id}/media` | Consultar una foto protegida |
 | `DELETE` | `/api/knowledge/{id}` | Quitar una señal |
 | `GET` | `/api/projects/{id}/radar` | Recuperar señales aplicables al proyecto |
+| `PATCH` | `/api/projects/{id}/radar/{item_id}` | Aprobar o descartar una sugerencia |
 | `POST` | `/api/projects/{id}/documents` | Cargar evidencia |
 | `POST` | `/api/projects/{id}/evidence` | Agregar referencia o nota del cliente |
 | `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
@@ -81,6 +86,8 @@ Para `ia.grupooliva.uy`, publicar detrás de un proxy HTTPS y configurar:
 - `CORS_ORIGINS=https://ia.grupooliva.uy`;
 - `OPENAI_API_KEY` como secreto del entorno.
 
-Sin una clave de OpenAI, el Radar sigue operativo: indexa títulos, contexto y etiquetas. Con la clave, las fotos también reciben una descripción objetiva y observaciones visuales para mejorar su recuperación.
+Sin una clave de OpenAI, el Radar sigue operativo: lee contenido web público e indexa títulos, contexto y etiquetas. Con la clave, las fotos también reciben una descripción objetiva y las asociaciones combinan coincidencias textuales con similitud semántica usando `text-embedding-3-small`.
+
+Sólo las referencias del Radar aprobadas por una persona entran al siguiente análisis de OLIVA Strategy. Los videos indexan la información pública del enlace y cualquier resumen o transcripción agregada manualmente; la transcripción automática de audio queda como una fase posterior.
 
 Las migraciones, el procesamiento asíncrono y el almacenamiento de objetos quedan fuera de este primer sprint y deben incorporarse antes de escalar el servicio.
