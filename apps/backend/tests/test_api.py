@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 from app.database import engine
 from app.main import app
 from app.link_reader import extract_page
+from app.ingestion import extract_email
 
 
 def setup_function():
@@ -54,6 +55,18 @@ def test_mvp_flow():
         assert approved.json()["status"] == "approved"
         upload = client.post(f"/api/projects/{project_id}/documents", headers=headers, files={"file": ("investigacion.txt", b"Las personas valoran la confianza.", "text/plain")})
         assert upload.status_code == 201
+        with patch("app.main.transcribe_audio", return_value="El equipo necesita crecer sin perder la identidad artesanal."):
+            audio = client.post(f"/api/projects/{project_id}/audio", headers=headers, data={"context": "Entrevista con gerencia"}, files={"file": ("entrevista.wav", b"RIFF-audio-demo", "audio/wav")})
+        assert audio.status_code == 201
+        audio_item = next(item for item in audio.json()["documents"] if item["category"] == "audio")
+        assert audio_item["processed"] is True
+        assert "identidad artesanal" in audio_item["text_excerpt"]
+        assert client.get(f"/api/projects/{project_id}/documents/{audio_item['id']}/media", headers=headers).content == b"RIFF-audio-demo"
+        raw_mail = b"From: cliente@example.com\nTo: estrategia@oliva.uy\nSubject: Informacion comercial\nContent-Type: text/plain; charset=utf-8\n\nTenemos capacidad ociosa y queremos crecer."
+        mail = client.post(f"/api/projects/{project_id}/mail-file", headers=headers, files={"file": ("consulta.eml", raw_mail, "message/rfc822")})
+        assert mail.status_code == 201
+        mail_item = next(item for item in mail.json()["documents"] if item["category"] == "email")
+        assert "capacidad ociosa" in mail_item["text_excerpt"]
         reference = client.post(f"/api/projects/{project_id}/evidence", headers=headers, json={"kind": "reference", "title": "Tendencias de confianza", "url": "https://example.com/articulo", "source": "Medio Demo", "content": "Contexto sectorial relevante."})
         assert reference.status_code == 201
         assert reference.json()["evidence_items"][0]["kind"] == "reference"
@@ -80,6 +93,15 @@ def test_project_is_private():
         assert client.get("/api/projects", headers=headers).status_code == 200
 
 
+def test_user_can_update_profile_and_password():
+    with TestClient(app) as client:
+        headers = auth(client)
+        updated = client.patch("/api/auth/me", headers=headers, json={"name": "Antonio Oliva", "current_password": "secreto123", "new_password": "nuevo-secreto-123"})
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "Antonio Oliva"
+        assert client.post("/api/auth/login", json={"email": "tony@oliva.uy", "password": "nuevo-secreto-123"}).status_code == 200
+
+
 def test_extracts_readable_page_content():
     html = b"""<html><head><title>Retail humano</title><meta property='og:site_name' content='Medio Demo'><meta name='description' content='Una tendencia relevante'></head><body><nav>Ignorar menu</nav><main><h1>Experiencias cercanas</h1><p>Las personas valoran espacios simples.</p></main><script>ignorar()</script></body></html>"""
     page = extract_page(html, "text/html")
@@ -87,3 +109,11 @@ def test_extracts_readable_page_content():
     assert page["source"] == "Medio Demo"
     assert "espacios simples" in page["text"]
     assert "Ignorar menu" not in page["text"]
+
+
+def test_extracts_email_headers_and_body():
+    raw = b"From: cliente@example.com\nTo: planner@oliva.uy\nSubject: Reunion de lanzamiento\nContent-Type: text/plain; charset=utf-8\n\nLa prioridad es crecer en Argentina."
+    text = extract_email(raw)
+    assert "ASUNTO: Reunion de lanzamiento" in text
+    assert "DE: cliente@example.com" in text
+    assert "crecer en Argentina" in text

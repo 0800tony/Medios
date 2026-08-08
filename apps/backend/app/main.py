@@ -11,10 +11,11 @@ from .auth import create_token, current_user, hash_password, verify_password
 from .config import get_settings
 from .database import create_db_and_tables, get_session
 from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
+from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
 from .models import Client, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, Project, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyResult, User, now
-from .schemas import ClientIn, ClientOut, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut
+from .schemas import ClientIn, ClientOut, DocumentOut, DocumentTextIn, EmailTextIn, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze
 
 settings = get_settings()
@@ -70,6 +71,17 @@ def login(data: LoginIn, session: Session = Depends(get_session)):
 
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: User = Depends(current_user)):
+    return user
+
+
+@app.patch("/api/auth/me", response_model=UserOut)
+def update_me(data: UserUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    if data.new_password:
+        if not verify_password(data.current_password, user.password_hash):
+            raise HTTPException(400, "La contraseña actual no es correcta")
+        user.password_hash = hash_password(data.new_password)
+    user.name = data.name.strip()
+    session.add(user); session.commit(); session.refresh(user)
     return user
 
 
@@ -303,6 +315,83 @@ async def upload_document(project_id: UUID, file: UploadFile = File(...), user: 
     document = Document(filename=filename, content_type=content_type, size=len(data), storage_path=str(path), extracted_text=extract_text(data, content_type), project_id=project.id)
     session.add(document); project.updated_at = now(); session.add(project); session.commit()
     return owned_project(project_id, user, session)
+
+
+@app.post("/api/projects/{project_id}/audio", response_model=ProjectOut, status_code=201)
+async def upload_audio(
+    project_id: UUID, file: UploadFile = File(...), context: str = Form(default="", max_length=2000),
+    transcript: str = Form(default="", max_length=100000), user: User = Depends(current_user), session: Session = Depends(get_session),
+):
+    project = owned_project(project_id, user, session)
+    filename = safe_name(file.filename or "audio")
+    suffix = Path(filename).suffix.lower()
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in AUDIO_TYPES and suffix not in AUDIO_EXTENSIONS:
+        raise HTTPException(415, "Formato no admitido. Usá MP3, MP4, M4A, WAV o WEBM.")
+    data = await file.read(AUDIO_MAX_SIZE + 1)
+    if len(data) > AUDIO_MAX_SIZE:
+        raise HTTPException(413, "El audio supera 25 MB")
+    extracted = transcript.strip()
+    if not extracted:
+        try: extracted = transcribe_audio(data, filename, content_type, f"Proyecto: {project.name}. {context}")
+        except Exception: extracted = ""
+    document = Document(filename=filename, content_type=content_type, size=len(data), storage_path="", extracted_text=extracted, project_id=project.id)
+    path = Path(settings.upload_dir) / str(project.id) / f"{document.id}_{filename}"
+    path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data); document.storage_path = str(path)
+    session.add(document); project.updated_at = now(); session.add(project); session.commit()
+    return owned_project(project_id, user, session)
+
+
+@app.post("/api/projects/{project_id}/mail-file", response_model=ProjectOut, status_code=201)
+async def upload_mail_file(project_id: UUID, file: UploadFile = File(...), user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    filename = safe_name(file.filename or "correo.eml")
+    if Path(filename).suffix.lower() != ".eml" and file.content_type != "message/rfc822":
+        raise HTTPException(415, "Formato no admitido. Guardá el correo como archivo .eml")
+    data = await file.read(EMAIL_MAX_SIZE + 1)
+    if len(data) > EMAIL_MAX_SIZE:
+        raise HTTPException(413, "El correo supera 15 MB")
+    try: extracted = extract_email(data)
+    except Exception: raise HTTPException(422, "No se pudo leer el archivo de correo")
+    document = Document(filename=filename, content_type="message/rfc822", size=len(data), storage_path="", extracted_text=extracted, project_id=project.id)
+    path = Path(settings.upload_dir) / str(project.id) / f"{document.id}_{filename}"
+    path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data); document.storage_path = str(path)
+    session.add(document); project.updated_at = now(); session.add(project); session.commit()
+    return owned_project(project_id, user, session)
+
+
+@app.post("/api/projects/{project_id}/mail", response_model=ProjectOut, status_code=201)
+def add_mail_text(project_id: UUID, data: EmailTextIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    extracted = format_email(data.subject, data.from_address, data.to_address, data.date, data.content)
+    document = Document(filename=f"correo_{safe_name(data.subject)[:80]}.eml", content_type="message/rfc822", size=len(extracted.encode()), storage_path="", extracted_text=extracted, project_id=project.id)
+    path = Path(settings.upload_dir) / str(project.id) / f"{document.id}.eml.txt"
+    path.parent.mkdir(parents=True, exist_ok=True); path.write_text(extracted, encoding="utf-8"); document.storage_path = str(path)
+    session.add(document); project.updated_at = now(); session.add(project); session.commit()
+    return owned_project(project_id, user, session)
+
+
+def owned_document(project_id: UUID, document_id: UUID, user: User, session: Session) -> Document:
+    project = owned_project(project_id, user, session)
+    document = session.get(Document, document_id)
+    if not document or document.project_id != project.id:
+        raise HTTPException(404, "Fuente no encontrada")
+    return document
+
+
+@app.patch("/api/projects/{project_id}/documents/{document_id}/text", response_model=DocumentOut)
+def update_document_text(project_id: UUID, document_id: UUID, data: DocumentTextIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    document = owned_document(project_id, document_id, user, session)
+    document.extracted_text = data.text.strip(); session.add(document); session.commit(); session.refresh(document)
+    return document
+
+
+@app.get("/api/projects/{project_id}/documents/{document_id}/media")
+def document_media(project_id: UUID, document_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    document = owned_document(project_id, document_id, user, session)
+    if not document.storage_path or not Path(document.storage_path).exists():
+        raise HTTPException(404, "Archivo no encontrado")
+    return FileResponse(document.storage_path, media_type=document.content_type, filename=document.filename)
 
 
 @app.post("/api/projects/{project_id}/evidence", response_model=ProjectOut, status_code=201)

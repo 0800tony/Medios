@@ -5,8 +5,12 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 ## Alcance del Sprint 1
 
 - autenticación con email y JWT;
+- perfil de usuario con actualización de nombre y contraseña;
 - clientes y proyectos privados por usuario;
+- directorio visible de clientes con industria y contexto;
 - carga y extracción de texto de PDF, DOCX, TXT y Markdown;
+- carga de audio MP3, MP4, M4A, WAV o WEBM, con transcripción automática o manual;
+- importación de correos `.eml` y captura manual de mensajes;
 - biblioteca de evidencia con enlaces externos y notas de reuniones o entrevistas con el cliente;
 - Radar OLIVA para indexar artículos, videos y fotografías que puedan reutilizarse entre proyectos;
 - análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;
@@ -20,7 +24,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 ## Puesta en marcha
 
 1. Copiar `.env.example` como `.env`.
-2. Cambiar `SECRET_KEY`. Agregar `OPENAI_API_KEY` para habilitar el análisis estratégico y visual con los modelos configurados (`OPENAI_MODEL` y `OPENAI_VISION_MODEL`).
+2. Cambiar `SECRET_KEY`. Agregar `OPENAI_API_KEY` para habilitar el análisis estratégico, visual, semántico y de audio con los modelos configurados.
 3. Ejecutar:
 
 ```bash
@@ -61,6 +65,7 @@ npm run build
 |---|---|---|
 | `POST` | `/api/auth/register` | Crear cuenta |
 | `POST` | `/api/auth/login` | Iniciar sesión |
+| `GET/PATCH` | `/api/auth/me` | Consultar o actualizar el perfil |
 | `GET/POST` | `/api/clients` | Listar/crear clientes |
 | `GET/POST` | `/api/projects` | Listar/crear proyectos |
 | `GET` | `/api/knowledge` | Buscar la memoria global Radar OLIVA |
@@ -72,6 +77,11 @@ npm run build
 | `GET` | `/api/projects/{id}/radar` | Recuperar señales aplicables al proyecto |
 | `PATCH` | `/api/projects/{id}/radar/{item_id}` | Aprobar o descartar una sugerencia |
 | `POST` | `/api/projects/{id}/documents` | Cargar evidencia |
+| `POST` | `/api/projects/{id}/audio` | Cargar y transcribir una grabación |
+| `POST` | `/api/projects/{id}/mail-file` | Importar un correo `.eml` |
+| `POST` | `/api/projects/{id}/mail` | Guardar un correo pegado manualmente |
+| `PATCH` | `/api/projects/{id}/documents/{document_id}/text` | Agregar o corregir una transcripción |
+| `GET` | `/api/projects/{id}/documents/{document_id}/media` | Reproducir o descargar una fuente protegida |
 | `POST` | `/api/projects/{id}/evidence` | Agregar referencia o nota del cliente |
 | `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
 | `POST` | `/api/projects/{id}/analyze` | Ejecutar OLIVA Strategy |
@@ -88,6 +98,8 @@ Para `ia.grupooliva.uy`, publicar detrás de un proxy HTTPS y configurar:
 
 Sin una clave de OpenAI, el Radar sigue operativo: lee contenido web público e indexa títulos, contexto y etiquetas. Con la clave, las fotos también reciben una descripción objetiva y las asociaciones combinan coincidencias textuales con similitud semántica usando `text-embedding-3-small`.
 
-Sólo las referencias del Radar aprobadas por una persona entran al siguiente análisis de OLIVA Strategy. Los videos indexan la información pública del enlace y cualquier resumen o transcripción agregada manualmente; la transcripción automática de audio queda como una fase posterior.
+Sólo las referencias del Radar aprobadas por una persona entran al siguiente análisis de OLIVA Strategy. Los videos enlazados indexan la información pública y cualquier resumen o transcripción agregada manualmente; extraer automáticamente el audio de plataformas externas queda como una fase posterior.
+
+La transcripción de grabaciones usa `gpt-transcribe` y admite hasta 25 MB. Sin una clave, el archivo igualmente queda protegido dentro del proyecto y la interfaz permite incorporar una transcripción manual.
 
 Las migraciones, el procesamiento asíncrono y el almacenamiento de objetos quedan fuera de este primer sprint y deben incorporarse antes de escalar el servicio.

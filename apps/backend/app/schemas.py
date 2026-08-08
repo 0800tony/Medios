@@ -18,6 +18,20 @@ class LoginIn(BaseModel):
     password: str
 
 
+class UserUpdateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    current_password: str = ""
+    new_password: str = Field(default="", min_length=0, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_password_change(self):
+        if self.new_password and len(self.new_password) < 8:
+            raise ValueError("La nueva contraseña debe tener al menos 8 caracteres")
+        if self.new_password and not self.current_password:
+            raise ValueError("Ingresá tu contraseña actual")
+        return self
+
+
 class UserOut(BaseModel):
     id: UUID
     email: str
@@ -55,8 +69,23 @@ class DocumentOut(BaseModel):
     filename: str
     content_type: str
     size: int
+    category: str
+    processed: bool
+    text_excerpt: str
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentTextIn(BaseModel):
+    text: str = Field(min_length=2, max_length=100000)
+
+
+class EmailTextIn(BaseModel):
+    subject: str = Field(min_length=2, max_length=300)
+    from_address: str = Field(default="", max_length=300)
+    to_address: str = Field(default="", max_length=500)
+    date: str = Field(default="", max_length=100)
+    content: str = Field(min_length=2, max_length=100000)
 
 
 class EvidenceIn(BaseModel):

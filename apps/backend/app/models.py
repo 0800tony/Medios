@@ -79,6 +79,23 @@ class Document(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
     project: Optional[Project] = Relationship(back_populates="documents")
 
+    @property
+    def processed(self) -> bool:
+        return bool(self.extracted_text.strip())
+
+    @property
+    def text_excerpt(self) -> str:
+        text = " ".join(self.extracted_text.split())
+        return text[:400]
+
+    @property
+    def category(self) -> str:
+        if self.content_type.startswith("audio/") or self.content_type == "video/mp4":
+            return "audio"
+        if self.content_type == "message/rfc822":
+            return "email"
+        return "document"
+
 
 class EvidenceItem(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)

@@ -1,11 +1,13 @@
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export type Client = { id: string; name: string; industry: string; description: string };
+export type User = { id: string; name: string; email: string };
 export type Result = { diagnosis: string; evidence: string; hypotheses: string; contradictions: string; strategic_question: string; confidence: string; model_used: string };
 export type EvidenceItem = { id: string; kind: "reference" | "client_note"; title: string; url: string; source: string; content: string; created_at: string };
 export type KnowledgeItem = { id: string; kind: "article" | "video" | "photo"; title: string; url: string; source: string; notes: string; tags: string; content_type: string; size: number; ai_summary: string; ai_observations: string; index_status: string; created_at: string };
 export type RadarSuggestion = { item: KnowledgeItem; status: "suggested" | "approved" | "dismissed"; score: number; reason: string };
-export type Project = { id: string; name: string; brief: string; objective: string; status: string; client_id: string; created_at: string; documents: {id:string; filename:string; size:number}[]; evidence_items: EvidenceItem[]; result: Result | null };
+export type DocumentItem = { id:string; filename:string; content_type:string; size:number; category:"document"|"audio"|"email"; processed:boolean; text_excerpt:string; created_at:string };
+export type Project = { id: string; name: string; brief: string; objective: string; status: string; client_id: string; created_at: string; documents: DocumentItem[]; evidence_items: EvidenceItem[]; result: Result | null };
 
 export function token() { return typeof window === "undefined" ? "" : localStorage.getItem("oliva_token") || ""; }
 export function logout() { localStorage.removeItem("oliva_token"); localStorage.removeItem("oliva_user"); window.location.href = "/login"; }
