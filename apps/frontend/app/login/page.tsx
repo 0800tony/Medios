@@ -1,0 +1,9 @@
+"use client";
+import { FormEvent, useState } from "react";
+import { request } from "@/lib/api";
+
+export default function Login(){
+ const [register,setRegister]=useState(false),[error,setError]=useState(""),[loading,setLoading]=useState(false);
+ async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();setLoading(true);setError("");const data=Object.fromEntries(new FormData(e.currentTarget));try{const out:any=await request(`/api/auth/${register?"register":"login"}`,{method:"POST",body:JSON.stringify(data)});localStorage.setItem("oliva_token",out.access_token);localStorage.setItem("oliva_user",JSON.stringify(out.user));location.href="/"}catch(err){setError((err as Error).message)}finally{setLoading(false)}}
+ return <main className="auth"><section className="auth-art"><div className="brand">OLIVA <span>INTELLIGENCE</span></div><div><p className="eyebrow">Pensar antes de comunicar</p><h1>La estrategia empieza con una mejor pregunta.</h1></div><small>ia.grupooliva.uy</small></section><section className="auth-box"><form onSubmit={submit}><p className="eyebrow">Acceso privado</p><h1>{register?"Crear cuenta":"Bienvenido"}</h1><p className="muted">Convertí información dispersa en decisiones estratégicas.</p>{register&&<div className="field"><label>Nombre</label><input name="name" required minLength={2}/></div>}<div className="field"><label>Email</label><input name="email" type="email" required/></div><div className="field"><label>Contraseña</label><input name="password" type="password" minLength={8} required/></div>{error&&<p className="error">{error}</p>}<button className="btn lime" disabled={loading}>{loading?"Ingresando…":register?"Crear cuenta":"Ingresar"}</button><button type="button" className="btn ghost" style={{marginLeft:8}} onClick={()=>setRegister(!register)}>{register?"Ya tengo cuenta":"Crear cuenta"}</button></form></section></main>
+}
