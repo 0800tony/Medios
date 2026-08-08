@@ -1,16 +1,18 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 from .auth import create_token, current_user, hash_password, verify_password
 from .config import get_settings
 from .database import create_db_and_tables, get_session
 from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
-from .models import Client, Document, EvidenceItem, Project, ProjectStatus, StrategyResult, User, now
-from .schemas import ClientIn, ClientOut, EvidenceIn, LoginIn, ProjectIn, ProjectOut, RegisterIn, TokenOut, UserOut
+from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, index_text, radar_context, relevant_items
+from .models import Client, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, Project, ProjectStatus, StrategyResult, User, now
+from .schemas import ClientIn, ClientOut, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, RegisterIn, TokenOut, UserOut
 from .strategy import analyze
 
 settings = get_settings()
@@ -66,6 +68,72 @@ def create_client(data: ClientIn, user: User = Depends(current_user), session: S
     return client
 
 
+@app.get("/api/knowledge", response_model=list[KnowledgeOut])
+def list_knowledge(q: str = Query(default="", max_length=200), user: User = Depends(current_user), session: Session = Depends(get_session)):
+    items = session.exec(select(KnowledgeItem).where(KnowledgeItem.owner_id == user.id).order_by(KnowledgeItem.created_at.desc())).all()
+    if not q.strip():
+        return items
+    terms = q.lower().split()
+    return [item for item in items if all(term in (item.indexed_text or index_text(item)).lower() for term in terms)]
+
+
+@app.post("/api/knowledge/links", response_model=KnowledgeOut, status_code=201)
+def add_knowledge_link(data: KnowledgeLinkIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    values = data.model_dump(); values["url"] = str(values["url"])
+    item = KnowledgeItem(**values, owner_id=user.id, ai_summary=data.notes, index_status="manual")
+    item.indexed_text = index_text(item)
+    session.add(item); session.commit(); session.refresh(item)
+    return item
+
+
+@app.post("/api/knowledge/photos", response_model=KnowledgeOut, status_code=201)
+async def add_knowledge_photo(
+    file: UploadFile = File(...), title: str = Form(..., min_length=2, max_length=250),
+    source: str = Form(default="", max_length=250), notes: str = Form(default="", max_length=20000),
+    tags: str = Form(default="", max_length=1000), user: User = Depends(current_user), session: Session = Depends(get_session),
+):
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in PHOTO_TYPES:
+        raise HTTPException(415, "Formato no admitido. Usá JPG, PNG o WEBP.")
+    data = await file.read(PHOTO_MAX_SIZE + 1)
+    if len(data) > PHOTO_MAX_SIZE:
+        raise HTTPException(413, "La foto supera 15 MB")
+    item = KnowledgeItem(kind=KnowledgeKind.photo, title=title, source=source, notes=notes, tags=tags, content_type=content_type, size=len(data), owner_id=user.id)
+    path = Path(settings.upload_dir) / "knowledge" / str(user.id) / f"{item.id}_{safe_name(file.filename or 'foto')}"
+    path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data); item.storage_path = str(path)
+    try:
+        visual = analyze_photo(data, content_type, title, notes)
+    except Exception:
+        visual = {"ai_summary": notes or "Foto guardada; el análisis visual no pudo completarse.", "ai_observations": "Análisis visual pendiente.", "index_status": "failed"}
+    for key, value in visual.items(): setattr(item, key, value)
+    item.indexed_text = index_text(item)
+    session.add(item); session.commit(); session.refresh(item)
+    return item
+
+
+def owned_knowledge(item_id: UUID, user: User, session: Session) -> KnowledgeItem:
+    item = session.get(KnowledgeItem, item_id)
+    if not item or item.owner_id != user.id:
+        raise HTTPException(404, "Elemento del Radar no encontrado")
+    return item
+
+
+@app.get("/api/knowledge/{item_id}/media")
+def knowledge_media(item_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    item = owned_knowledge(item_id, user, session)
+    if item.kind != KnowledgeKind.photo or not item.storage_path or not Path(item.storage_path).exists():
+        raise HTTPException(404, "Foto no encontrada")
+    return FileResponse(item.storage_path, media_type=item.content_type)
+
+
+@app.delete("/api/knowledge/{item_id}", status_code=204)
+def delete_knowledge(item_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    item = owned_knowledge(item_id, user, session)
+    if item.storage_path:
+        Path(item.storage_path).unlink(missing_ok=True)
+    session.delete(item); session.commit()
+
+
 def owned_project(project_id: UUID, user: User, session: Session) -> Project:
     statement = select(Project).where(Project.id == project_id, Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.evidence_items), selectinload(Project.result))
     project = session.exec(statement).first()
@@ -93,6 +161,13 @@ def create_project(data: ProjectIn, user: User = Depends(current_user), session:
 @app.get("/api/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     return owned_project(project_id, user, session)
+
+
+@app.get("/api/projects/{project_id}/radar", response_model=list[KnowledgeOut])
+def project_radar(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    items = session.exec(select(KnowledgeItem).where(KnowledgeItem.owner_id == user.id)).all()
+    return relevant_items(project, items)
 
 
 @app.post("/api/projects/{project_id}/documents", response_model=ProjectOut, status_code=201)
@@ -141,7 +216,9 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             f"{('REFERENCIA' if item.kind.value == 'reference' else 'NOTA DEL CLIENTE')}: {item.title}\nFuente: {item.source or 'No indicada'}\nURL: {item.url or 'No aplica'}\nContenido: {item.content}"
             for item in project.evidence_items
         )
-        data = analyze(project, f"{file_context}\n\n{evidence_context}")
+        knowledge = session.exec(select(KnowledgeItem).where(KnowledgeItem.owner_id == user.id)).all()
+        selected_radar = relevant_items(project, knowledge)
+        data = analyze(project, f"{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}")
         existing = project.result
         if existing:
             for key, value in data.items():

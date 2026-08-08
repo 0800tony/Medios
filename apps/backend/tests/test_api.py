@@ -32,6 +32,16 @@ def test_mvp_flow():
         project = client.post("/api/projects", headers=headers, json={"name": "Lanzamiento", "client_id": created_client.json()["id"], "brief": "Necesitamos crecer", "objective": "Aumentar consideración"})
         assert project.status_code == 201
         project_id = project.json()["id"]
+        radar_link = client.post("/api/knowledge/links", headers=headers, json={"kind": "article", "title": "Consideracion y confianza", "url": "https://example.com/radar", "source": "Radar Demo", "notes": "La consideracion crece con señales de confianza.", "tags": "consideracion confianza"})
+        assert radar_link.status_code == 201
+        radar_id = radar_link.json()["id"]
+        radar_photo = client.post("/api/knowledge/photos", headers=headers, data={"title": "Vidriera de referencia", "notes": "Diseño de retail", "tags": "retail vidriera"}, files={"file": ("vidriera.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+        assert radar_photo.status_code == 201
+        assert radar_photo.json()["index_status"] == "manual"
+        radar_photo_id = radar_photo.json()["id"]
+        assert client.get(f"/api/knowledge/{radar_photo_id}/media", headers=headers).content.startswith(b"\x89PNG")
+        assert client.get("/api/knowledge?" + "q=confianza", headers=headers).json()[0]["title"] == "Consideracion y confianza"
+        assert client.get(f"/api/projects/{project_id}/radar", headers=headers).json()[0]["id"] == radar_id
         upload = client.post(f"/api/projects/{project_id}/documents", headers=headers, files={"file": ("investigacion.txt", b"Las personas valoran la confianza.", "text/plain")})
         assert upload.status_code == 201
         reference = client.post(f"/api/projects/{project_id}/evidence", headers=headers, json={"kind": "reference", "title": "Tendencias de confianza", "url": "https://example.com/articulo", "source": "Medio Demo", "content": "Contexto sectorial relevante."})
@@ -49,6 +59,8 @@ def test_mvp_flow():
         assert client.delete(f"/api/projects/{project_id}/evidence/{note_id}", headers=headers).status_code == 204
         assert client.delete(f"/api/projects/{project_id}/evidence/{reference_id}", headers=headers).status_code == 204
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["evidence_items"] == []
+        assert client.delete(f"/api/knowledge/{radar_id}", headers=headers).status_code == 204
+        assert client.delete(f"/api/knowledge/{radar_photo_id}", headers=headers).status_code == 204
 
 
 def test_project_is_private():

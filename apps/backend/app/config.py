@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
+    openai_vision_model: str = "gpt-5.6-terra"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

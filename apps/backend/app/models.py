@@ -21,6 +21,12 @@ class EvidenceKind(str, Enum):
     client_note = "client_note"
 
 
+class KnowledgeKind(str, Enum):
+    article = "article"
+    video = "video"
+    photo = "photo"
+
+
 class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     email: str = Field(unique=True, index=True)
@@ -77,6 +83,25 @@ class EvidenceItem(SQLModel, table=True):
     project_id: UUID = Field(foreign_key="project.id", index=True)
     created_at: datetime = Field(default_factory=now)
     project: Optional[Project] = Relationship(back_populates="evidence_items")
+
+
+class KnowledgeItem(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    kind: KnowledgeKind = Field(index=True)
+    title: str
+    url: str = ""
+    source: str = ""
+    notes: str = ""
+    tags: str = ""
+    storage_path: str = ""
+    content_type: str = ""
+    size: int = 0
+    ai_summary: str = ""
+    ai_observations: str = ""
+    indexed_text: str = ""
+    index_status: str = "manual"
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=now)
 
 
 class StrategyResult(SQLModel, table=True):

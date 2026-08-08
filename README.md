@@ -1,6 +1,6 @@
 # OLIVA Intelligence
 
-MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usuarios, administrar clientes y proyectos, cargar evidencia y generar un diagnóstico inicial con OLIVA Strategy.
+MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usuarios, administrar clientes y proyectos, construir una memoria transversal de referencias y generar un diagnóstico inicial con OLIVA Strategy.
 
 ## Alcance del Sprint 1
 
@@ -8,6 +8,8 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - clientes y proyectos privados por usuario;
 - carga y extracción de texto de PDF, DOCX, TXT y Markdown;
 - biblioteca de evidencia con enlaces externos y notas de reuniones o entrevistas con el cliente;
+- Radar OLIVA para indexar artículos, videos y fotografías que puedan reutilizarse entre proyectos;
+- análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;
 - análisis con OpenAI y modo local explícito cuando no hay API key;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
 - PostgreSQL, Docker Compose y tests de flujo crítico.
@@ -15,7 +17,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 ## Puesta en marcha
 
 1. Copiar `.env.example` como `.env`.
-2. Cambiar `SECRET_KEY`. Agregar `OPENAI_API_KEY` para habilitar análisis con el modelo configurado.
+2. Cambiar `SECRET_KEY`. Agregar `OPENAI_API_KEY` para habilitar el análisis estratégico y visual con los modelos configurados (`OPENAI_MODEL` y `OPENAI_VISION_MODEL`).
 3. Ejecutar:
 
 ```bash
@@ -58,6 +60,12 @@ npm run build
 | `POST` | `/api/auth/login` | Iniciar sesión |
 | `GET/POST` | `/api/clients` | Listar/crear clientes |
 | `GET/POST` | `/api/projects` | Listar/crear proyectos |
+| `GET` | `/api/knowledge` | Buscar la memoria global Radar OLIVA |
+| `POST` | `/api/knowledge/links` | Indexar un artículo o video |
+| `POST` | `/api/knowledge/photos` | Cargar e indexar una fotografía |
+| `GET` | `/api/knowledge/{id}/media` | Consultar una foto protegida |
+| `DELETE` | `/api/knowledge/{id}` | Quitar una señal |
+| `GET` | `/api/projects/{id}/radar` | Recuperar señales aplicables al proyecto |
 | `POST` | `/api/projects/{id}/documents` | Cargar evidencia |
 | `POST` | `/api/projects/{id}/evidence` | Agregar referencia o nota del cliente |
 | `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
@@ -72,5 +80,7 @@ Para `ia.grupooliva.uy`, publicar detrás de un proxy HTTPS y configurar:
 - `NEXT_PUBLIC_API_URL=https://api.ia.grupooliva.uy` (o la ruta pública elegida);
 - `CORS_ORIGINS=https://ia.grupooliva.uy`;
 - `OPENAI_API_KEY` como secreto del entorno.
+
+Sin una clave de OpenAI, el Radar sigue operativo: indexa títulos, contexto y etiquetas. Con la clave, las fotos también reciben una descripción objetiva y observaciones visuales para mejorar su recuperación.
 
 Las migraciones, el procesamiento asíncrono y el almacenamiento de objetos quedan fuera de este primer sprint y deben incorporarse antes de escalar el servicio.

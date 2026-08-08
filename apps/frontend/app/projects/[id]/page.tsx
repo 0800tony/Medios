@@ -3,18 +3,19 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
-import { EvidenceItem, Project, request } from "@/lib/api";
+import { EvidenceItem, KnowledgeItem, Project, request } from "@/lib/api";
 
 type EvidenceMode = "file" | "reference" | "client_note";
 
 export default function ProjectPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<Project | null>(null);
+  const [radar, setRadar] = useState<KnowledgeItem[]>([]);
   const [mode, setMode] = useState<EvidenceMode>("file");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = () => request<Project>(`/api/projects/${params.id}`).then(setProject);
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); request<KnowledgeItem[]>(`/api/projects/${params.id}/radar`).then(setRadar); }, []);
 
   async function upload(file: File) {
     setBusy(true); setError("");
@@ -119,6 +120,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         <p className="eyebrow">Punto de partida</p><h3>Objetivo declarado</h3><p>{project.objective || "Sin definir"}</p>
         <h3>Brief</h3><p className="muted">{project.brief || "Sin contexto adicional"}</p>
         <hr/><p className="muted"><strong>OLIVA Strategy</strong> tratará los archivos, enlaces y notas como fuentes diferenciadas. Una opinión del cliente no se convertirá automáticamente en un hecho.</p>
+        {radar.length > 0 && <div className="radar-suggestions"><p className="eyebrow">Radar aplicable</p>{radar.map(item => <div key={item.id}><strong>{item.title}</strong><small>{item.kind} · {item.source || "Radar OLIVA"}</small></div>)}</div>}
       </aside>
     </section>
 

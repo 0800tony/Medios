@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, model_validator
-from .models import EvidenceKind, ProjectStatus
+from .models import EvidenceKind, KnowledgeKind, ProjectStatus
 
 
 class RegisterIn(BaseModel):
@@ -82,6 +82,38 @@ class EvidenceOut(BaseModel):
     url: str
     source: str
     content: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeLinkIn(BaseModel):
+    kind: KnowledgeKind
+    title: str = Field(min_length=2, max_length=250)
+    url: HttpUrl
+    source: str = Field(default="", max_length=250)
+    notes: str = Field(default="", max_length=20000)
+    tags: str = Field(default="", max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_link_kind(self):
+        if self.kind not in (KnowledgeKind.article, KnowledgeKind.video):
+            raise ValueError("Este formulario admite artículos o videos")
+        return self
+
+
+class KnowledgeOut(BaseModel):
+    id: UUID
+    kind: KnowledgeKind
+    title: str
+    url: str
+    source: str
+    notes: str
+    tags: str
+    content_type: str
+    size: int
+    ai_summary: str
+    ai_observations: str
+    index_status: str
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
