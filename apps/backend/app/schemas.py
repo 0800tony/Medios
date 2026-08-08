@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from .models import ProjectStatus
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, model_validator
+from .models import EvidenceKind, ProjectStatus
 
 
 class RegisterIn(BaseModel):
@@ -59,6 +59,33 @@ class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class EvidenceIn(BaseModel):
+    kind: EvidenceKind
+    title: str = Field(min_length=2, max_length=250)
+    url: Optional[HttpUrl] = None
+    source: str = Field(default="", max_length=250)
+    content: str = Field(default="", max_length=20000)
+
+    @model_validator(mode="after")
+    def validate_kind(self):
+        if self.kind == EvidenceKind.reference and not self.url:
+            raise ValueError("Una referencia debe incluir un enlace")
+        if self.kind == EvidenceKind.client_note and not self.content.strip():
+            raise ValueError("Una nota debe incluir información del cliente")
+        return self
+
+
+class EvidenceOut(BaseModel):
+    id: UUID
+    kind: EvidenceKind
+    title: str
+    url: str
+    source: str
+    content: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ResultOut(BaseModel):
     id: UUID
     diagnosis: str
@@ -82,5 +109,6 @@ class ProjectOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     documents: list[DocumentOut] = []
+    evidence_items: list[EvidenceOut] = []
     result: Optional[ResultOut] = None
     model_config = ConfigDict(from_attributes=True)

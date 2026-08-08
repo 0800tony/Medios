@@ -9,8 +9,8 @@ from .auth import create_token, current_user, hash_password, verify_password
 from .config import get_settings
 from .database import create_db_and_tables, get_session
 from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
-from .models import Client, Document, Project, ProjectStatus, StrategyResult, User, now
-from .schemas import ClientIn, ClientOut, LoginIn, ProjectIn, ProjectOut, RegisterIn, TokenOut, UserOut
+from .models import Client, Document, EvidenceItem, Project, ProjectStatus, StrategyResult, User, now
+from .schemas import ClientIn, ClientOut, EvidenceIn, LoginIn, ProjectIn, ProjectOut, RegisterIn, TokenOut, UserOut
 from .strategy import analyze
 
 settings = get_settings()
@@ -67,7 +67,7 @@ def create_client(data: ClientIn, user: User = Depends(current_user), session: S
 
 
 def owned_project(project_id: UUID, user: User, session: Session) -> Project:
-    statement = select(Project).where(Project.id == project_id, Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.result))
+    statement = select(Project).where(Project.id == project_id, Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.evidence_items), selectinload(Project.result))
     project = session.exec(statement).first()
     if not project:
         raise HTTPException(404, "Proyecto no encontrado")
@@ -76,7 +76,7 @@ def owned_project(project_id: UUID, user: User, session: Session) -> Project:
 
 @app.get("/api/projects", response_model=list[ProjectOut])
 def list_projects(user: User = Depends(current_user), session: Session = Depends(get_session)):
-    statement = select(Project).where(Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.result)).order_by(Project.updated_at.desc())
+    statement = select(Project).where(Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.evidence_items), selectinload(Project.result)).order_by(Project.updated_at.desc())
     return session.exec(statement).all()
 
 
@@ -112,12 +112,36 @@ async def upload_document(project_id: UUID, file: UploadFile = File(...), user: 
     return owned_project(project_id, user, session)
 
 
+@app.post("/api/projects/{project_id}/evidence", response_model=ProjectOut, status_code=201)
+def add_evidence(project_id: UUID, data: EvidenceIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    values = data.model_dump()
+    values["url"] = str(values["url"]) if values["url"] else ""
+    item = EvidenceItem(**values, project_id=project.id)
+    session.add(item); project.updated_at = now(); session.add(project); session.commit()
+    return owned_project(project_id, user, session)
+
+
+@app.delete("/api/projects/{project_id}/evidence/{evidence_id}", status_code=204)
+def delete_evidence(project_id: UUID, evidence_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    item = session.get(EvidenceItem, evidence_id)
+    if not item or item.project_id != project.id:
+        raise HTTPException(404, "Evidencia no encontrada")
+    session.delete(item); project.updated_at = now(); session.add(project); session.commit()
+
+
 @app.post("/api/projects/{project_id}/analyze", response_model=ProjectOut)
 def analyze_project(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
     project.status = ProjectStatus.analyzing; project.updated_at = now(); session.add(project); session.commit()
     try:
-        data = analyze(project, "\n\n".join(doc.extracted_text for doc in project.documents))
+        file_context = "\n\n".join(f"ARCHIVO: {doc.filename}\n{doc.extracted_text}" for doc in project.documents)
+        evidence_context = "\n\n".join(
+            f"{('REFERENCIA' if item.kind.value == 'reference' else 'NOTA DEL CLIENTE')}: {item.title}\nFuente: {item.source or 'No indicada'}\nURL: {item.url or 'No aplica'}\nContenido: {item.content}"
+            for item in project.evidence_items
+        )
+        data = analyze(project, f"{file_context}\n\n{evidence_context}")
         existing = project.result
         if existing:
             for key, value in data.items():

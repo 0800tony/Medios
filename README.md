@@ -7,6 +7,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - autenticación con email y JWT;
 - clientes y proyectos privados por usuario;
 - carga y extracción de texto de PDF, DOCX, TXT y Markdown;
+- biblioteca de evidencia con enlaces externos y notas de reuniones o entrevistas con el cliente;
 - análisis con OpenAI y modo local explícito cuando no hay API key;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
 - PostgreSQL, Docker Compose y tests de flujo crítico.
@@ -58,6 +59,8 @@ npm run build
 | `GET/POST` | `/api/clients` | Listar/crear clientes |
 | `GET/POST` | `/api/projects` | Listar/crear proyectos |
 | `POST` | `/api/projects/{id}/documents` | Cargar evidencia |
+| `POST` | `/api/projects/{id}/evidence` | Agregar referencia o nota del cliente |
+| `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
 | `POST` | `/api/projects/{id}/analyze` | Ejecutar OLIVA Strategy |
 
 ## Producción

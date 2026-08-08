@@ -16,6 +16,11 @@ class ProjectStatus(str, Enum):
     failed = "failed"
 
 
+class EvidenceKind(str, Enum):
+    reference = "reference"
+    client_note = "client_note"
+
+
 class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     email: str = Field(unique=True, index=True)
@@ -46,6 +51,7 @@ class Project(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now)
     client: Optional[Client] = Relationship(back_populates="projects")
     documents: List["Document"] = Relationship(back_populates="project", cascade_delete=True)
+    evidence_items: List["EvidenceItem"] = Relationship(back_populates="project", cascade_delete=True)
     result: Optional["StrategyResult"] = Relationship(back_populates="project", cascade_delete=True)
 
 
@@ -59,6 +65,18 @@ class Document(SQLModel, table=True):
     project_id: UUID = Field(foreign_key="project.id", index=True)
     created_at: datetime = Field(default_factory=now)
     project: Optional[Project] = Relationship(back_populates="documents")
+
+
+class EvidenceItem(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    kind: EvidenceKind = Field(index=True)
+    title: str
+    url: str = ""
+    source: str = ""
+    content: str = ""
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    created_at: datetime = Field(default_factory=now)
+    project: Optional[Project] = Relationship(back_populates="evidence_items")
 
 
 class StrategyResult(SQLModel, table=True):
