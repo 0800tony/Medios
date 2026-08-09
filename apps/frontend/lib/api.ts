@@ -10,6 +10,7 @@ export type DocumentItem = { id:string; filename:string; content_type:string; si
 export type Project = { id: string; name: string; brief: string; objective: string; status: string; client_id: string; created_at: string; updated_at: string; documents: DocumentItem[]; evidence_items: EvidenceItem[]; result: Result | null };
 export type Brief={data:Record<string,string>;completeness:number;missing_required:string[]};
 export type Dossier={id:string;version:number;sections:Record<string,unknown>;approval_status:"draft"|"approved"|"changes"|"rejected"|"pending_information";approval_notes:string;model_used:string;created_at:string};
+export type StrategyDecision={id:string;project_id:string;dossier_id:string;route_key:"ruta_1"|"ruta_2"|"ruta_3";rationale:string;launch_plan:string;created_at:string;updated_at:string};
 export type LibraryItem={id:string;kind:string;title:string;url:string;source:string;description:string;tags:string;year:string;festival:string;award:string;results:string;client_id:string|null;content_type:string;size:number;ai_analysis:string;created_at:string};
 export type CreativeReview={id:string;project_id:string;name:string;medium:string;rationale:string;filename:string;content_type:string;size:number;verdict:string;scores:Record<string,number>;evaluation:string;model_used:string;created_at:string};
 

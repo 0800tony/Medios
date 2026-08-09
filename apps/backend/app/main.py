@@ -15,8 +15,8 @@ from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
 from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
-from .models import Client, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDossier, StrategyResult, User, now
-from .schemas import ApprovalIn, BriefIn, BriefOut, ClientIn, ClientOut, ClientUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
+from .models import Client, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
+from .schemas import ApprovalIn, BriefIn, BriefOut, ClientIn, ClientOut, ClientUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
 from .intelligence import evaluate_creative, festival_research, project_web_research
 
@@ -342,6 +342,22 @@ def suggestion_output(link: ProjectKnowledgeLink, item: KnowledgeItem) -> RadarS
     return RadarSuggestionOut(item=KnowledgeOut.model_validate(item), status=link.status, score=link.score, reason=link.reason)
 
 
+def relevant_library_entries(project: Project, user: User, session: Session, limit: int = 6) -> list[LibraryEntry]:
+    reference = f"{project.name} {project.objective} {project.brief}".lower()
+    terms = {term for term in reference.replace("/", " ").split() if len(term) >= 4}
+    candidates = session.exec(select(LibraryEntry).where(LibraryEntry.owner_id == user.id)).all()
+    ranked: list[tuple[int, LibraryEntry]] = []
+    for item in candidates:
+        if item.client_id and item.client_id != project.client_id:
+            continue
+        text = f"{item.title} {item.description} {item.tags} {item.ai_analysis}".lower()
+        overlap = sum(term in text for term in terms)
+        score = overlap * 12 + (40 if item.client_id == project.client_id else 0)
+        if score:
+            ranked.append((score, item))
+    return [item for _, item in sorted(ranked, key=lambda pair: pair[0], reverse=True)[:limit]]
+
+
 @app.get("/api/projects", response_model=list[ProjectOut])
 def list_projects(user: User = Depends(current_user), session: Session = Depends(get_session)):
     statement = select(Project).where(Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.evidence_items), selectinload(Project.result)).order_by(Project.updated_at.desc())
@@ -380,6 +396,8 @@ def delete_project(project_id: UUID, user: User = Depends(current_user), session
         session.delete(vector)
     brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first()
     if brief:session.delete(brief)
+    decision=session.exec(select(StrategyDecision).where(StrategyDecision.project_id==project.id)).first()
+    if decision:session.delete(decision)
     for d in session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id)).all():session.delete(d)
     for c in session.exec(select(CreativeSubmission).where(CreativeSubmission.project_id==project.id)).all():
         if c.storage_path:Path(c.storage_path).unlink(missing_ok=True)
@@ -400,6 +418,12 @@ def get_project_brief(project_id:UUID,user:User=Depends(current_user),session:Se
 @app.put("/api/projects/{project_id}/brief",response_model=BriefOut)
 def save_project_brief(project_id:UUID,data:BriefIn,user:User=Depends(current_user),session:Session=Depends(get_session)):
     p=owned_project(project_id,user,session);clean={str(k):str(v).strip() for k,v in data.data.items()};completeness=round(sum(bool(clean.get(k)) for k in BRIEF_REQUIRED)*100/len(BRIEF_REQUIRED));stored=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==p.id)).first() or ProjectBrief(project_id=p.id);stored.data_json=json.dumps(clean,ensure_ascii=False);stored.completeness=completeness;stored.updated_at=now();p.brief=clean.get("request") or p.brief;p.updated_at=now();session.add(stored);session.add(p);session.commit();session.refresh(stored);return brief_output(stored)
+
+
+@app.get("/api/projects/{project_id}/library-suggestions", response_model=list[LibraryOut])
+def project_library_suggestions(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    return relevant_library_entries(project, user, session)
 
 
 @app.get("/api/projects/{project_id}/radar", response_model=list[RadarSuggestionOut])
@@ -585,11 +609,16 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             f"Nombre: {client.name}\nIndustria: {client.industry or 'No definida'}\nContexto: {client.description or 'No aportado'}"
             if client else "Sin contexto de cliente"
         )
+        library_items = relevant_library_entries(project, user, session)
+        library_context = "\n\n".join(
+            f"BIBLIOTECA COGNITIVA ({item.kind}): {item.title}\nFuente: {item.source or item.url or 'OLIVA'}\nAprendizaje: {item.description or item.ai_analysis[:5000]}"
+            for item in library_items
+        )
         source_manifest = (
             f"RESUMEN DE FUENTES: {len(project.documents)} archivos, "
-            f"{len(project.evidence_items)} evidencias directas y {len(selected_radar)} señales aprobadas del Radar."
+            f"{len(project.evidence_items)} evidencias directas, {len(selected_radar)} señales aprobadas del Radar y {len(library_items)} referencias aplicables de la Biblioteca Cognitiva."
         )
-        full_context=f"{source_manifest}\n\nCLIENTE:\n{client_context}\n\n{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}"
+        full_context=f"{source_manifest}\n\nCLIENTE:\n{client_context}\n\n{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}\n\n{library_context}"
         data = analyze(project, full_context, client_context)
         existing = project.result
         if existing:
@@ -598,7 +627,7 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             session.add(existing)
         else:
             session.add(StrategyResult(project_id=project.id, **data))
-        stored_brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first();brief_data=json.loads(stored_brief.data_json) if stored_brief else {"request":project.brief,"communication_goal":project.objective};source_names=[d.filename for d in project.documents]+[e.title for e in project.evidence_items]+[f"Radar OLIVA: {i.title}" for i in selected_radar];dossier_data,dossier_model=analyze_dossier(project,brief_data,full_context,source_names);previous=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first();session.add(StrategyDossier(project_id=project.id,version=previous.version+1 if previous else 1,content_json=json.dumps(dossier_data,ensure_ascii=False),model_used=dossier_model))
+        stored_brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first();brief_data=json.loads(stored_brief.data_json) if stored_brief else {"request":project.brief,"communication_goal":project.objective};source_names=[d.filename for d in project.documents]+[e.title for e in project.evidence_items]+[f"Radar OLIVA: {i.title}" for i in selected_radar]+[f"Biblioteca OLIVA: {i.title}" for i in library_items];dossier_data,dossier_model=analyze_dossier(project,brief_data,full_context,source_names);previous=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first();session.add(StrategyDossier(project_id=project.id,version=previous.version+1 if previous else 1,content_json=json.dumps(dossier_data,ensure_ascii=False),model_used=dossier_model))
         project.status = ProjectStatus.completed
     except Exception:
         project.status = ProjectStatus.failed
@@ -619,7 +648,38 @@ def approve_strategy(project_id:UUID,data:ApprovalIn,user:User=Depends(current_u
     if data.status not in {"approved","changes","rejected","pending_information"}:raise HTTPException(422,"Estado inválido")
     d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project_id).order_by(StrategyDossier.version.desc())).first()
     if not d:raise HTTPException(404,"El proyecto todavía no tiene estrategia")
+    decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project_id)).first()
+    if data.status == "approved" and (not decision or decision.dossier_id != d.id):
+        raise HTTPException(409,"Elegí una ruta estratégica de trabajo antes de aprobar la estrategia")
     d.approval_status=data.status;d.approval_notes=data.notes.strip();d.updated_at=now();session.add(d);session.commit();session.refresh(d);return dossier_output(d)
+
+
+@app.get("/api/projects/{project_id}/strategy/decision", response_model=StrategyDecisionOut)
+def get_strategy_decision(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project_id)).first()
+    dossier = session.exec(select(StrategyDossier).where(StrategyDossier.project_id == project_id).order_by(StrategyDossier.version.desc())).first()
+    if not decision or not dossier or decision.dossier_id != dossier.id:
+        raise HTTPException(404, "Todavía no se eligió una ruta estratégica")
+    return decision
+
+
+@app.put("/api/projects/{project_id}/strategy/decision", response_model=StrategyDecisionOut)
+def save_strategy_decision(project_id: UUID, data: StrategyDecisionIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    dossier = session.exec(select(StrategyDossier).where(StrategyDossier.project_id == project_id).order_by(StrategyDossier.version.desc())).first()
+    if not dossier:
+        raise HTTPException(404, "El proyecto todavía no tiene estrategia")
+    sections = json.loads(dossier.content_json)
+    if not sections.get(data.route_key):
+        raise HTTPException(422, "La ruta elegida no existe en la estrategia vigente")
+    decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project_id)).first()
+    if decision:
+        decision.dossier_id = dossier.id; decision.route_key = data.route_key; decision.rationale = data.rationale.strip(); decision.launch_plan = data.launch_plan.strip(); decision.updated_at = now()
+    else:
+        decision = StrategyDecision(project_id=project_id, dossier_id=dossier.id, route_key=data.route_key, rationale=data.rationale.strip(), launch_plan=data.launch_plan.strip())
+    session.add(decision); session.commit(); session.refresh(decision)
+    return decision
 def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)
 @app.get("/api/projects/{project_id}/creative",response_model=list[CreativeOut])
 def list_creative(project_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
@@ -628,11 +688,13 @@ def list_creative(project_id:UUID,user:User=Depends(current_user),session:Sessio
 async def review_creative(project_id:UUID,file:UploadFile=File(...),name:str=Form(...,min_length=2,max_length=250),medium:str=Form(default="",max_length=250),rationale:str=Form(default="",max_length=10000),user:User=Depends(current_user),session:Session=Depends(get_session)):
     p=owned_project(project_id,user,session);d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==p.id).order_by(StrategyDossier.version.desc())).first()
     if not d or d.approval_status!="approved":raise HTTPException(409,"Primero debe aprobarse la estrategia vigente")
+    decision=session.exec(select(StrategyDecision).where(StrategyDecision.project_id==p.id)).first()
+    if not decision or decision.dossier_id != d.id:raise HTTPException(409,"Elegí la ruta estratégica vigente antes de evaluar una propuesta")
     ct=file.content_type or "application/octet-stream"
     if ct not in PHOTO_TYPES|{"application/pdf","text/plain","text/markdown"}:raise HTTPException(415,"Usá JPG, PNG, WEBP, PDF o texto")
     raw=await file.read(MAX_SIZE+1)
     if len(raw)>MAX_SIZE:raise HTTPException(413,"La pieza supera 15 MB")
-    filename=safe_name(file.filename or "pieza");item=CreativeSubmission(project_id=p.id,name=name.strip(),medium=medium.strip(),rationale=rationale.strip(),filename=filename,storage_path="",content_type=ct,size=len(raw),owner_id=user.id);path=Path(settings.upload_dir)/"creative"/str(p.id)/f"{item.id}_{filename}";path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);item.storage_path=str(path);client=session.get(Client,p.client_id);ev=evaluate_creative(path,ct,item.name,item.medium,item.rationale,json.loads(d.content_json),f"{client.name if client else ''}: {client.description if client else ''}");item.verdict=ev.get("verdict","pending");item.score_json=json.dumps(ev.get("scores",{}));item.evaluation=ev.get("evaluation","");item.model_used=ev.get("model_used","OLIVA Creative Review");session.add(item);session.commit();session.refresh(item);return creative_output(item)
+    filename=safe_name(file.filename or "pieza");item=CreativeSubmission(project_id=p.id,name=name.strip(),medium=medium.strip(),rationale=rationale.strip(),filename=filename,storage_path="",content_type=ct,size=len(raw),owner_id=user.id);path=Path(settings.upload_dir)/"creative"/str(p.id)/f"{item.id}_{filename}";path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);item.storage_path=str(path);client=session.get(Client,p.client_id);strategy_data=json.loads(d.content_json);strategy_data["decision_estrategica"]={"ruta":decision.route_key,"fundamento":decision.rationale,"plan_de_lanzamiento":decision.launch_plan};ev=evaluate_creative(path,ct,item.name,item.medium,item.rationale,strategy_data,f"{client.name if client else ''}: {client.description if client else ''}");item.verdict=ev.get("verdict","pending");item.score_json=json.dumps(ev.get("scores",{}));item.evaluation=ev.get("evaluation","");item.model_used=ev.get("model_used","OLIVA Creative Review");session.add(item);session.commit();session.refresh(item);return creative_output(item)
 @app.get("/api/projects/{project_id}/creative/{creative_id}/media")
 def creative_media(project_id:UUID,creative_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
     owned_project(project_id,user,session);item=session.get(CreativeSubmission,creative_id)
@@ -654,9 +716,14 @@ def export_project_report(project_id: UUID, user: User = Depends(current_user), 
         )
     ).all()
     radar_items = [session.get(KnowledgeItem, link.knowledge_item_id) for link in approved_links]
+    library_items = relevant_library_entries(project, user, session)
+    decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project.id)).first()
+    if decision and dossier and decision.dossier_id != dossier.id:
+        decision = None
     sources = [f"- Archivo: {document.filename}" for document in project.documents]
     sources += [f"- {item.title}: {item.url or item.source or 'Nota interna'}" for item in project.evidence_items]
     sources += [f"- Radar OLIVA: {item.title} — {item.url or item.source}" for item in radar_items if item]
+    sources += [f"- Biblioteca Cognitiva OLIVA: {item.title} — {item.url or item.source or 'Referencia interna'}" for item in library_items]
     result = project.result
     sections=json.loads(dossier.content_json) if dossier else {}
     full_strategy="\n\n".join(f"## {key.replace('_',' ').title()}\n\n{json.dumps(value,ensure_ascii=False,indent=2) if isinstance(value,(dict,list)) else value}" for key,value in sections.items())
@@ -679,6 +746,15 @@ def export_project_report(project_id: UUID, user: User = Depends(current_user), 
 ## Objetivo declarado
 
 {project.objective or 'No definido'}
+
+{f'''## Ruta de trabajo elegida
+
+**Ruta:** {decision.route_key.replace('_', ' ').title()}
+
+**Fundamento:** {decision.rationale}
+
+**Plan de lanzamiento:** {decision.launch_plan}
+''' if decision else ''}
 
 {full_strategy}
 

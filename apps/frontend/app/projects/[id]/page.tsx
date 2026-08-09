@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
-import { DocumentItem, EvidenceItem, Project, RadarSuggestion, request, requestBlob, saveBlob } from "@/lib/api";
+import { DocumentItem, EvidenceItem, LibraryItem, Project, RadarSuggestion, request, requestBlob, saveBlob } from "@/lib/api";
 
 type EvidenceMode = "file" | "audio" | "mail" | "reference" | "client_note" | "research";
 
@@ -16,6 +16,7 @@ function AudioPlayer({projectId,item}:{projectId:string;item:DocumentItem}){
 export default function ProjectPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<Project | null>(null);
   const [radar, setRadar] = useState<RadarSuggestion[]>([]);
+  const [librarySuggestions, setLibrarySuggestions] = useState<LibraryItem[]>([]);
   const [mode, setMode] = useState<EvidenceMode>("file");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,7 +27,8 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
   const load = () => request<Project>(`/api/projects/${params.id}`).then(setProject);
   const loadRadar = () => request<RadarSuggestion[]>(`/api/projects/${params.id}/radar`).then(setRadar);
-  useEffect(() => { load(); loadRadar(); }, []);
+  const loadLibrarySuggestions = () => request<LibraryItem[]>(`/api/projects/${params.id}/library-suggestions`).then(setLibrarySuggestions).catch(() => setLibrarySuggestions([]));
+  useEffect(() => { load(); loadRadar(); loadLibrarySuggestions(); }, []);
   useEffect(() => { if (typeof window !== "undefined" && window.location.hash === "#research") setMode("research"); }, []);
 
   async function upload(file: File) {
@@ -230,12 +232,13 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       <aside className="card project-brief">
         {editingProject?<form onSubmit={updateProject}><p className="eyebrow">Editar proyecto</p><div className="field"><label>Nombre</label><input name="name" required defaultValue={project.name}/></div><div className="field"><label>Objetivo declarado</label><input name="objective" defaultValue={project.objective}/></div><div className="field"><label>Brief / contexto</label><textarea name="brief" defaultValue={project.brief}/></div><div className="inline-actions"><button className="btn lime" disabled={busy}>Guardar cambios</button><button type="button" className="btn ghost" onClick={()=>setEditingProject(false)}>Cancelar</button></div></form>:<><p className="eyebrow">Punto de partida</p><h3>Objetivo declarado</h3><p>{project.objective || "Sin definir"}</p><h3>Brief</h3><p className="muted">{project.brief || "Sin contexto adicional"}</p></>}
         <hr/><p className="muted"><strong>OLIVA Strategy</strong> tratará los archivos, enlaces y notas como fuentes diferenciadas. Una opinión del cliente no se convertirá automáticamente en un hecho.</p>
+        {librarySuggestions.length > 0 && <><hr/><div className="radar-suggestions"><p className="eyebrow">Biblioteca Cognitiva aplicable</p><p className="radar-help">Estas referencias de OLIVA se incorporarán automáticamente al próximo análisis, porque guardan relación con este proyecto.</p>{librarySuggestions.map(item => <div className="radar-suggestion approved" key={item.id}><strong>{item.title}</strong><small>{item.kind.replaceAll("_", " ")} · {item.source || "Biblioteca OLIVA"}</small><small>{item.description || item.ai_analysis || "Referencia indexada"}</small>{item.url && <a href={item.url} target="_blank" rel="noreferrer">Abrir referencia ↗</a>}</div>)}<Link className="text-action" href="/library">Ver Biblioteca Cognitiva →</Link></div></>}
         {radar.length > 0 && <div className="radar-suggestions"><p className="eyebrow">Radar aplicable</p><p className="radar-help">La IA encontró estas conexiones. Aprobá las que deban entrar al próximo análisis.</p>{radar.map(suggestion => <div className={`radar-suggestion ${suggestion.status}`} key={suggestion.item.id}><span className="match-score">{suggestion.score}% afinidad</span><strong>{suggestion.item.title}</strong><small>{suggestion.reason}</small><small>{suggestion.item.kind} · {suggestion.item.source || "Radar OLIVA"}</small><div className="suggestion-actions"><button className={suggestion.status === "approved" ? "selected" : ""} disabled={busy} onClick={() => decideRadar(suggestion, "approved")}>{suggestion.status === "approved" ? "✓ Aplicada" : "Aplicar"}</button><button className={suggestion.status === "dismissed" ? "selected dismiss" : ""} disabled={busy} onClick={() => decideRadar(suggestion, "dismissed")}>{suggestion.status === "dismissed" ? "Descartada" : "Descartar"}</button></div></div>)}</div>}
         <hr/><button className="danger-link project-delete" disabled={busy} onClick={deleteProject}>Eliminar proyecto</button>
       </aside>
     </section>
 
     {error && <p className="error">{error}</p>}
-    <div className="analyze-bar"><div><strong>{sourceCount} {sourceCount === 1 ? "fuente disponible" : "fuentes disponibles"}</strong><p className="muted">Incluye evidencia propia y referencias del Radar que hayas aprobado.</p></div><button className="btn lime" disabled={busy} onClick={analyze}>{busy ? "Analizando…" : "Analizar con OLIVA Strategy →"}</button></div>
+    <div className="analyze-bar"><div><strong>{sourceCount + librarySuggestions.length} {sourceCount + librarySuggestions.length === 1 ? "fuente disponible" : "fuentes disponibles"}</strong><p className="muted">Incluye evidencia propia, Radar aprobado y referencias pertinentes de la Biblioteca Cognitiva.</p></div><button className="btn lime" disabled={busy} onClick={analyze}>{busy ? "Analizando…" : "Analizar con OLIVA Strategy →"}</button></div>
   </main>;
 }

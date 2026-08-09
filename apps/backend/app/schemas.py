@@ -219,6 +219,13 @@ class ApprovalIn(BaseModel):
     status: str; notes: str = Field(default="", max_length=10000)
 class DossierOut(BaseModel):
     id: UUID; version: int; sections: dict[str, object]; approval_status: str; approval_notes: str; model_used: str; created_at: datetime
+class StrategyDecisionIn(BaseModel):
+    route_key: str = Field(pattern="^ruta_[123]$")
+    rationale: str = Field(min_length=12, max_length=10000)
+    launch_plan: str = Field(min_length=12, max_length=10000)
+class StrategyDecisionOut(BaseModel):
+    id: UUID; project_id: UUID; dossier_id: UUID; route_key: str; rationale: str; launch_plan: str; created_at: datetime; updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 class LibraryLinkIn(BaseModel):
     kind: str; url: HttpUrl; description: str = Field(default="", max_length=20000); tags: str = Field(default="", max_length=1000); client_id: Optional[UUID] = None; results: str = Field(default="", max_length=5000)
 class LibraryOut(BaseModel):

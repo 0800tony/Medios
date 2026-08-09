@@ -92,6 +92,12 @@ def test_mvp_flow():
         assert research.json()["added_sources"] == 1
         assert research.json()["sources"][0]["url"] == "https://example.com/estudio"
         research_id = next(item["id"] for item in client.get(f"/api/projects/{project_id}", headers=headers).json()["evidence_items"] if item["url"] == "https://example.com/estudio")
+        with patch("app.main.read_link", return_value=page):
+            library = client.post("/api/library/links", headers=headers, json={"kind": "internal_case", "url": "https://example.com/caso", "description": "Caso exitoso para retail", "results": "Crecimiento", "client_id": created_client.json()["id"]})
+        assert library.status_code == 201
+        suggestions = client.get(f"/api/projects/{project_id}/library-suggestions", headers=headers)
+        assert suggestions.status_code == 200
+        assert suggestions.json()[0]["id"] == library.json()["id"]
         note_id = next(item["id"] for item in note.json()["evidence_items"] if item["kind"] == "client_note")
         result = client.post(f"/api/projects/{project_id}/analyze", headers=headers)
         assert result.status_code == 200
@@ -104,14 +110,17 @@ def test_mvp_flow():
         assert len(critical_gaps) >= 3
         assert {"vacio", "por_que_importa", "pregunta", "evidencia_necesaria"}.issubset(critical_gaps[0])
         assert dossier.json()["sections"]["proxima_decision"]["resolver_primero"]
+        needs_route = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
+        assert needs_route.status_code == 409
+        decision = client.put(f"/api/projects/{project_id}/strategy/decision", headers=headers, json={"route_key": "ruta_3", "rationale": "Primero hay que reducir la fricción comercial antes de ampliar la comunicación.", "launch_plan": "Pilotear la propuesta en dos plazas, medir rotación y ajustar antes de escalar."})
+        assert decision.status_code == 200
+        assert decision.json()["route_key"] == "ruta_3"
         approval = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
         assert approval.json()["approval_status"] == "approved"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
         assert creative.status_code == 201
-        assert creative.json()["verdict"] == "pending"
-        with patch("app.main.read_link", return_value=page):
-            library = client.post("/api/library/links", headers=headers, json={"kind": "internal_case", "url": "https://example.com/caso", "description": "Caso exitoso", "results": "Crecimiento"})
-        assert library.status_code == 201
+        assert creative.json()["verdict"] == "revisar"
+        assert "ruta 3" in creative.json()["evaluation"].lower()
         assert library.json()["title"] == "Confianza en retail"
         assert len(client.get("/api/library?kind=internal_case", headers=headers).json()) == 1
         report = client.get(f"/api/projects/{project_id}/report", headers=headers)

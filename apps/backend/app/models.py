@@ -188,6 +188,16 @@ class StrategyDossier(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
 
+class StrategyDecision(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", unique=True, index=True)
+    dossier_id: UUID = Field(index=True)
+    route_key: str
+    rationale: str = ""
+    launch_plan: str = ""
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
 class LibraryEntry(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     kind: str = Field(index=True)

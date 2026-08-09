@@ -54,7 +54,15 @@ def festival_research(query:str)->tuple[str,list[dict[str,str]],str]:
 CREATIVE_PROMPT="""Sos el comité creativo de OLIVA. Evaluá contra la estrategia aprobada y contexto de marca. No premies estética sin estrategia. Aplicá sustitución de logo, cambio de categoría y eliminación de estética. Puntúa 0-5 estrategia, verdad_humana, rol_de_marca, apropiabilidad, originalidad, claridad, fertilidad, coherencia, adecuacion_al_medio, viabilidad. Las primeras críticas son estrategia, coherencia y apropiabilidad. Respondé SOLO JSON: verdict (aprobable/revisar/no_alineada), scores y evaluation concreta."""
 def evaluate_creative(path:Path,content_type:str,name:str,medium:str,rationale:str,strategy:dict,brand_context:str)->dict:
     s=get_settings()
-    if not s.openai_api_key:return {"verdict":"pending","scores":{k:0 for k in SCORE_KEYS},"evaluation":"La pieza quedó guardada. Configurá OPENAI_API_KEY para recibir devolución automática.","model_used":"OLIVA Creative Review — modo local"}
+    if not s.openai_api_key:
+        decision=(strategy.get("decision_estrategica") or {}) if isinstance(strategy,dict) else {}
+        route=decision.get("ruta") or decision.get("route_key", "ruta de trabajo")
+        has_rationale=len(rationale.strip()) >= 40
+        scores={key:0 for key in SCORE_KEYS}
+        scores["estrategia"]=2 if has_rationale else 1
+        scores["claridad"]=2 if medium.strip() else 1
+        scores["viabilidad"]=2 if medium.strip() else 1
+        return {"verdict":"revisar","scores":scores,"evaluation":f"Control editorial local: la pieza debe demostrar cómo responde a {str(route).replace('_', ' ')}. {'El fundamento aporta una base inicial; revisá que explique audiencia, promesa y conducta a cambiar.' if has_rationale else 'Falta un fundamento de al menos una idea completa: audiencia, promesa, conducta esperada y rol del medio.'} La evaluación visual y de originalidad se completa al configurar la IA.","model_used":"OLIVA Creative Review — guía local"}
     raw=path.read_bytes();content=[{"type":"input_text","text":json.dumps({"nombre":name,"medio":medium,"fundamento":rationale,"estrategia":strategy,"marca":brand_context},ensure_ascii=False)}]
     if content_type.startswith("image/"):content.append({"type":"input_image","image_url":f"data:{content_type};base64,{base64.b64encode(raw).decode()}","detail":"high"})
     else:content.append({"type":"input_text","text":extract_text(raw,content_type)[:60000]})

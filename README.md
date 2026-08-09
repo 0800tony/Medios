@@ -17,15 +17,15 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - Radar OLIVA para indexar artículos, videos y fotografías que puedan reutilizarse entre proyectos;
 - captura automática de título y fuente al guardar enlaces del Radar;
 - investigación web guiada por proyecto, con fuentes de mercado, prensa empresaria, medios especializados y foros claramente diferenciados;
-- Biblioteca Cognitiva para casos OLIVA, referencias visuales, criterios de marca, aprendizajes y casos premiados;
+- Biblioteca Cognitiva para casos OLIVA, referencias visuales, criterios de marca, aprendizajes y casos premiados, conectada automáticamente a los proyectos pertinentes;
 - investigación de referencias en fuentes oficiales de Cannes Lions, D&AD, One Club, Clio y Effie;
 - análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;
 - lectura protegida del contenido público de artículos y metadatos de videos;
 - búsqueda híbrida: coincidencia temática local y similitud semántica mediante embeddings cuando hay una API key;
 - sugerencias por proyecto con afinidad, motivo y decisión humana de aplicar o descartar;
-- contrabrief OLIVA Strategy de 32 apartados, versionado y sujeto a aprobación humana;
+- contrabrief OLIVA Strategy de 32 apartados, versionado y sujeto a decisión de ruta y aprobación humana;
 - exactamente tres rutas estratégicas diferenciadas y preguntas priorizadas cuando falta información;
-- revisión de propuestas creativas contra la estrategia aprobada, con matriz publicitaria de diez criterios;
+- revisión de propuestas creativas contra la ruta estratégica aprobada, con matriz publicitaria de diez criterios;
 - análisis con OpenAI Responses API y modo local explícito cuando no hay API key;
 - descarga del diagnóstico con manifiesto de fuentes e impresión en PDF;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
@@ -93,6 +93,7 @@ npm run build
 | `DELETE` | `/api/knowledge/{id}` | Quitar una señal |
 | `GET` | `/api/projects/{id}/radar` | Recuperar señales aplicables al proyecto |
 | `PATCH` | `/api/projects/{id}/radar/{item_id}` | Aprobar o descartar una sugerencia |
+| `GET` | `/api/projects/{id}/library-suggestions` | Ver referencias de la Biblioteca Cognitiva que OLIVA usará en el análisis |
 | `POST` | `/api/projects/{id}/documents` | Cargar evidencia |
 | `POST` | `/api/projects/{id}/audio` | Cargar y transcribir una grabación |
 | `POST` | `/api/projects/{id}/mail-file` | Importar un correo `.eml` |
@@ -104,6 +105,7 @@ npm run build
 | `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
 | `POST` | `/api/projects/{id}/analyze` | Ejecutar OLIVA Strategy |
 | `GET` | `/api/projects/{id}/strategy` | Consultar el contrabrief estratégico vigente |
+| `GET/PUT` | `/api/projects/{id}/strategy/decision` | Consultar o elegir la ruta que guiará la activación y la evaluación creativa |
 | `PATCH` | `/api/projects/{id}/strategy/approval` | Aprobar o pedir cambios a la estrategia |
 | `GET/POST` | `/api/projects/{id}/creative` | Listar o evaluar propuestas creativas |
 | `GET` | `/api/projects/{id}/report` | Descargar el diagnóstico y su manifiesto de fuentes |
