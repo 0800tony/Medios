@@ -27,6 +27,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const load = () => request<Project>(`/api/projects/${params.id}`).then(setProject);
   const loadRadar = () => request<RadarSuggestion[]>(`/api/projects/${params.id}/radar`).then(setRadar);
   useEffect(() => { load(); loadRadar(); }, []);
+  useEffect(() => { if (typeof window !== "undefined" && window.location.hash === "#research") setMode("research"); }, []);
 
   async function upload(file: File) {
     setBusy(true); setError("");
@@ -199,7 +200,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           </form>}
 
           {mode === "research" && <form onSubmit={researchWeb}>
-            <p className="muted">Busca y cita fuentes públicas. Prioriza Kantar, NielsenIQ, Ipsos, GfK y Euromonitor; prensa empresaria argentina, medios especializados y foros como señales a contrastar.</p>
+            <p className="muted">Busca y cita fuentes públicas para construir una aproximación: estudios de consumidores, investigación de mercado, prensa empresaria argentina, medios especializados y foros como señales a contrastar.</p>
             <div className="field"><label>¿Qué necesitás investigar?</label><textarea name="query" required minLength={3} placeholder="Ej. Mercado argentino de alfajores: consumo, precio, distribución, competidores y tendencias de compra"/></div>
             <button className="btn lime" disabled={busy}>{busy ? "Investigando…" : "Buscar fuentes relevantes"}</button>
             <p className="muted smallprint">Las fuentes encontradas quedan vinculadas al proyecto con su enlace original. Las notas de foros se identifican como señales, no como hechos.</p>
