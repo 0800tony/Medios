@@ -70,8 +70,12 @@ def relevant_items(project: Project, items: list[KnowledgeItem], limit: int = 5)
 def analyze_photo(data: bytes, content_type: str, title: str, notes: str) -> dict[str, str]:
     settings = get_settings()
     if not settings.openai_api_key:
-        summary = notes.strip() or "Foto guardada sin análisis automático. Agregá contexto para mejorar su recuperación."
-        return {"ai_summary": summary, "ai_observations": "Pendiente de análisis visual con IA.", "index_status": "manual"}
+        summary = notes.strip() or f"Foto incorporada al Radar con el título “{title}”."
+        return {
+            "ai_summary": summary,
+            "ai_observations": "Indexada con el título, lugar, contexto y etiquetas aportados. El análisis automático de lo visible en la imagen se habilita al configurar una API key.",
+            "index_status": "indexed",
+        }
 
     encoded = base64.b64encode(data).decode("ascii")
     client = OpenAI(api_key=settings.openai_api_key)

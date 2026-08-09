@@ -22,6 +22,8 @@ export default function KnowledgePage() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [photoCount, setPhotoCount] = useState(0);
   const load = () => request<KnowledgeItem[]>("/api/knowledge").then(setItems);
   useEffect(() => { load(); }, []);
 
@@ -31,7 +33,7 @@ export default function KnowledgePage() {
   }, [items, query]);
 
   async function addLink(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); setBusy(true); setError(""); setSuccess("");
     const form = event.currentTarget;
     try {
       await request("/api/knowledge/links", { method: "POST", body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), kind: mode }) });
@@ -41,10 +43,33 @@ export default function KnowledgePage() {
   }
 
   async function addPhoto(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    const form = event.currentTarget; const data = new FormData(form);
-    try { await request("/api/knowledge/photos", { method: "POST", body: data }); form.reset(); await load(); }
-    catch (e) { setError((e as Error).message); }
+    event.preventDefault(); setBusy(true); setError(""); setSuccess("");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const files = data.getAll("file").filter((value): value is File => value instanceof File && value.size > 0);
+    const seriesTitle = String(data.get("title") || "Serie visual").trim();
+    const source = String(data.get("source") || "");
+    const notes = String(data.get("notes") || "");
+    const tags = String(data.get("tags") || "");
+    let uploaded = 0;
+    try {
+      if (!files.length) throw new Error("Elegí al menos una foto");
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const photo = new FormData();
+        const sequence = files.length > 1 ? ` · ${String(index + 1).padStart(2, "0")} de ${String(files.length).padStart(2, "0")}` : "";
+        photo.set("file", file);
+        photo.set("title", `${seriesTitle}${sequence} — ${file.name}`.slice(0, 250));
+        photo.set("source", source);
+        photo.set("notes", `${notes}${sequence ? `\nSerie: ${seriesTitle}${sequence}.` : ""}`.trim());
+        photo.set("tags", [tags, files.length > 1 ? `serie:${seriesTitle}` : ""].filter(Boolean).join(", ").slice(0, 1000));
+        await request("/api/knowledge/photos", { method: "POST", body: photo });
+        uploaded += 1;
+      }
+      form.reset(); setPhotoCount(0); await load();
+      setSuccess(files.length === 1 ? "Foto incorporada e indexada." : `${files.length} fotos incorporadas como la serie “${seriesTitle}”.`);
+    }
+    catch (e) { setError(uploaded ? `Se cargaron ${uploaded} de ${files.length} fotos. ${(e as Error).message}` : (e as Error).message); }
     finally { setBusy(false); }
   }
 
@@ -79,15 +104,15 @@ export default function KnowledgePage() {
           <button className="btn lime" disabled={busy}>{busy ? "Indexando…" : "Guardar e indexar"}</button>
           <p className="muted smallprint">Intentamos leer automáticamente el título, la descripción y el contenido público del enlace. Tus notas siempre tienen prioridad.</p>
         </form> : <form onSubmit={addPhoto}>
-          <div className="field"><label>Título</label><input name="title" required placeholder="Ej. Stand destacado en feria"/></div>
-          <div className="field"><label>Foto</label><input name="file" type="file" accept="image/jpeg,image/png,image/webp" required/></div>
+          <div className="field"><label>Nombre de la serie o visita</label><input name="title" required placeholder="Ej. Expo Retail 2026 · Stands"/></div>
+          <div className="field"><label>Fotos</label><input name="file" type="file" accept="image/jpeg,image/png,image/webp" multiple required onChange={event => setPhotoCount(event.target.files?.length || 0)}/><small>{photoCount ? `${photoCount} foto${photoCount === 1 ? "" : "s"} seleccionada${photoCount === 1 ? "" : "s"}. Se guardarán ordenadas como una misma serie.` : "Podés elegir una foto o toda una secuencia de la expo."}</small></div>
           <div className="field"><label>Lugar o fuente</label><input name="source" placeholder="Ej. Expo Retail, Buenos Aires"/></div>
           <div className="field"><label>Qué viste y por qué importa</label><textarea name="notes" placeholder="Contexto de la foto, detalle que llamó la atención y posible aplicación…"/></div>
           <div className="field"><label>Etiquetas</label><input name="tags" placeholder="stand, vidriera, exhibición, diseño"/></div>
-          <button className="btn lime" disabled={busy}>{busy ? "Analizando imagen…" : "Subir e indexar foto"}</button>
-          <p className="muted smallprint">Con una API key, la IA describe elementos visuales y texto visible. Sin ella, indexa tu título, contexto y etiquetas.</p>
+          <button className="btn lime" disabled={busy}>{busy ? "Incorporando fotos…" : photoCount > 1 ? `Incorporar ${photoCount} fotos` : "Subir e indexar foto"}</button>
+          <p className="muted smallprint">Con una API key, la IA describe elementos visuales y texto visible. Sin ella, cada foto queda indexada con tu título, contexto, lugar y etiquetas.</p>
         </form>}
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error">{error}</p>}{success && <p className="success">{success}</p>}
       </div>
 
       <div>

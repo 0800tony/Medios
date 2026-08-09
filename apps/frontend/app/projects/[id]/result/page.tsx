@@ -30,6 +30,15 @@ function CriticalGaps({ value, projectId }: { value: unknown; projectId: string 
   })}</div>;
 }
 
+function CriticalGapActions({ value, projectId }: { value: unknown; projectId: string }) {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  return <section className="card resolve-gaps"><p className="eyebrow">Siguiente paso</p><h2>Completá estas respuestas para fortalecer la estrategia</h2><p className="muted">No editás el informe directamente: cada botón abre el campo correcto del brief y después generás una nueva versión.</p><div className="resolve-gap-actions">{value.map((item, index) => {
+    const gap = item as Record<string, string>;
+    const field = criticalFields[gap.vacio];
+    return field ? <Link className="btn lime" key={`${gap.vacio}-${index}`} href={`/projects/${projectId}/brief#${field}`}>{index + 1}. Responder: {gap.vacio} →</Link> : null;
+  })}</div></section>;
+}
+
 export default function ResultPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<Project | null>(null);
   const [dossier, setDossier] = useState<Dossier | null>(null);
@@ -57,6 +66,7 @@ export default function ResultPage({ params }: { params: { id: string } }) {
   return <main className="shell result-page"><Nav/>
     <div className="pagehead"><div><p className="eyebrow">Contrabrief · Versión {dossier.version}</p><h1>{project.name}</h1><div className="strategy-status"><span className="status">{dossier.approval_status.replace("_", " ")}</span><small>{dossier.model_used}</small></div></div><div className="page-actions"><button className="btn lime" onClick={download}>Descargar</button><Link className="btn ghost" href={`/projects/${project.id}/brief`}>Editar brief</Link><Link className="btn ghost" href={`/projects/${project.id}`}>← Evidencia</Link></div></div>
     <section className="approval-bar"><div><strong>Aprobación humana</strong><p>Podés aprobar esta versión de trabajo y avanzar. Los vacíos críticos quedan visibles como riesgos a validar, no como un bloqueo.</p></div><div className="inline-actions"><button className="btn lime" disabled={busy} onClick={() => approve("approved")}>Aprobar versión de trabajo</button><button className="btn ghost" disabled={busy} onClick={() => approve("changes")}>Pedir cambios</button>{dossier.approval_status === "approved" && <Link className="btn" href={`/projects/${project.id}/creative`}>Revisar propuestas →</Link>}</div></section>
+    <CriticalGapActions value={dossier.sections.que_no_sabemos} projectId={project.id}/>
     {error && <p className="error">{error}</p>}<section className="dossier">{order.map((key, index) => <article className={`card dossier-section ${["resumen_ejecutivo", "que_no_sabemos", "diagnostico_del_problema", "insight", "oportunidad_estrategica", "comparacion_de_rutas", "proxima_decision"].includes(key) ? "featured" : ""}`} key={key}><p className="section-number">{String(index + 1).padStart(2, "0")}</p><h2>{key === "que_no_sabemos" ? "Vacíos críticos: qué falta y cómo resolverlo" : key.replaceAll("_", " ")}</h2>{key === "que_no_sabemos" ? <CriticalGaps value={dossier.sections[key]} projectId={project.id}/> : <Content value={dossier.sections[key]}/>}</article>)}</section>
   </main>;
 }

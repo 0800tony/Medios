@@ -53,7 +53,8 @@ def test_mvp_flow():
         radar_id = radar_link.json()["id"]
         radar_photo = client.post("/api/knowledge/photos", headers=headers, data={"title": "Vidriera de referencia", "notes": "Diseño de retail", "tags": "retail vidriera"}, files={"file": ("vidriera.png", b"\x89PNG\r\n\x1a\n", "image/png")})
         assert radar_photo.status_code == 201
-        assert radar_photo.json()["index_status"] == "manual"
+        assert radar_photo.json()["index_status"] == "indexed"
+        assert "Indexada con" in radar_photo.json()["ai_observations"]
         radar_photo_id = radar_photo.json()["id"]
         assert client.get(f"/api/knowledge/{radar_photo_id}/media", headers=headers).content.startswith(b"\x89PNG")
         assert radar_link.json()["title"] == "Confianza en retail"
