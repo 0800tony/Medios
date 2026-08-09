@@ -71,7 +71,7 @@ def local_dossier(project:Project,brief:dict[str,str],source_names:list[str])->d
         "preguntas_indispensables":[gap["pregunta"] for gap in gaps[:3]],
         "preguntas_importantes":[gap["pregunta"] for gap in gaps[3:]],
         "preguntas_deseables":["¿Qué aprendizajes de casos propios o premiados son transferibles sin copiar ejecuciones?"],
-        "proxima_decision":{"no_hacer_aun":"No aprobar una ruta creativa ni cerrar una promesa.","resolver_primero":top_names,"plan_de_validacion":[gap["evidencia_necesaria"] for gap in gaps[:3]],"criterio_de_salida":"Cuando estas respuestas tengan evidencia, generar una nueva versión y decidir una de las tres rutas."},
+        "proxima_decision":{"decision_posible_ahora":"Se puede aprobar esta versión como estrategia de trabajo y avanzar con hipótesis explícitas.","no_cerrar_aun":"No convertir una ruta en decisión definitiva ni cerrar una promesa hasta validar los vacíos prioritarios.","resolver_primero":top_names,"plan_de_validacion":[gap["evidencia_necesaria"] for gap in gaps[:3]],"criterio_de_salida":"Cuando estas respuestas tengan evidencia, generar una nueva versión y decidir una de las tres rutas."},
     })
     return base
 def analyze_dossier(project:Project,brief:dict[str,str],context:str,source_names:list[str])->tuple[dict[str,object],str]:
