@@ -7,6 +7,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - autenticación con email y JWT;
 - perfil de usuario con actualización de nombre y contraseña;
 - clientes y proyectos privados por usuario;
+- edición y eliminación protegida de clientes y proyectos;
 - directorio visible de clientes con industria y contexto;
 - carga y extracción de texto de PDF, DOCX, TXT y Markdown;
 - carga de audio MP3, MP4, M4A, WAV o WEBM, con transcripción automática o manual;
@@ -18,6 +19,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - búsqueda híbrida: coincidencia temática local y similitud semántica mediante embeddings cuando hay una API key;
 - sugerencias por proyecto con afinidad, motivo y decisión humana de aplicar o descartar;
 - análisis con OpenAI y modo local explícito cuando no hay API key;
+- descarga del diagnóstico con manifiesto de fuentes e impresión en PDF;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
 - PostgreSQL, Docker Compose y tests de flujo crítico.
 
@@ -67,7 +69,9 @@ npm run build
 | `POST` | `/api/auth/login` | Iniciar sesión |
 | `GET/PATCH` | `/api/auth/me` | Consultar o actualizar el perfil |
 | `GET/POST` | `/api/clients` | Listar/crear clientes |
+| `PATCH/DELETE` | `/api/clients/{id}` | Editar/eliminar un cliente sin proyectos |
 | `GET/POST` | `/api/projects` | Listar/crear proyectos |
+| `GET/PATCH/DELETE` | `/api/projects/{id}` | Consultar, editar o eliminar un proyecto |
 | `GET` | `/api/knowledge` | Buscar la memoria global Radar OLIVA |
 | `POST` | `/api/knowledge/links` | Indexar un artículo o video |
 | `POST` | `/api/knowledge/photos` | Cargar e indexar una fotografía |
@@ -82,9 +86,11 @@ npm run build
 | `POST` | `/api/projects/{id}/mail` | Guardar un correo pegado manualmente |
 | `PATCH` | `/api/projects/{id}/documents/{document_id}/text` | Agregar o corregir una transcripción |
 | `GET` | `/api/projects/{id}/documents/{document_id}/media` | Reproducir o descargar una fuente protegida |
+| `DELETE` | `/api/projects/{id}/documents/{document_id}` | Quitar un archivo y su texto extraído |
 | `POST` | `/api/projects/{id}/evidence` | Agregar referencia o nota del cliente |
 | `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
 | `POST` | `/api/projects/{id}/analyze` | Ejecutar OLIVA Strategy |
+| `GET` | `/api/projects/{id}/report` | Descargar el diagnóstico y su manifiesto de fuentes |
 
 ## Producción
 

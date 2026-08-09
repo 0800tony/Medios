@@ -51,6 +51,10 @@ class ClientIn(BaseModel):
     description: str = ""
 
 
+class ClientUpdateIn(ClientIn):
+    pass
+
+
 class ClientOut(ClientIn):
     id: UUID
     created_at: datetime
@@ -60,6 +64,12 @@ class ClientOut(ClientIn):
 class ProjectIn(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     client_id: UUID
+    brief: str = ""
+    objective: str = ""
+
+
+class ProjectUpdateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
     brief: str = ""
     objective: str = ""
 

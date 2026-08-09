@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import UUID
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 from .auth import create_token, current_user, hash_password, verify_password
@@ -15,7 +15,7 @@ from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
 from .models import Client, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, Project, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyResult, User, now
-from .schemas import ClientIn, ClientOut, DocumentOut, DocumentTextIn, EmailTextIn, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
+from .schemas import ClientIn, ClientOut, ClientUpdateIn, DocumentOut, DocumentTextIn, EmailTextIn, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze
 
 settings = get_settings()
@@ -95,6 +95,30 @@ def create_client(data: ClientIn, user: User = Depends(current_user), session: S
     client = Client(**data.model_dump(), owner_id=user.id)
     session.add(client); session.commit(); session.refresh(client)
     return client
+
+
+def owned_client(client_id: UUID, user: User, session: Session) -> Client:
+    client = session.get(Client, client_id)
+    if not client or client.owner_id != user.id:
+        raise HTTPException(404, "Cliente no encontrado")
+    return client
+
+
+@app.patch("/api/clients/{client_id}", response_model=ClientOut)
+def update_client(client_id: UUID, data: ClientUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    client = owned_client(client_id, user, session)
+    for key, value in data.model_dump().items():
+        setattr(client, key, value.strip())
+    session.add(client); session.commit(); session.refresh(client)
+    return client
+
+
+@app.delete("/api/clients/{client_id}", status_code=204)
+def delete_client(client_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    client = owned_client(client_id, user, session)
+    if session.exec(select(Project).where(Project.client_id == client.id)).first():
+        raise HTTPException(409, "Este cliente tiene proyectos. Eliminá o reasigná esos proyectos primero.")
+    session.delete(client); session.commit()
 
 
 @app.get("/api/knowledge", response_model=list[KnowledgeOut])
@@ -278,6 +302,29 @@ def create_project(data: ProjectIn, user: User = Depends(current_user), session:
     return project
 
 
+@app.patch("/api/projects/{project_id}", response_model=ProjectOut)
+def update_project(project_id: UUID, data: ProjectUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    for key, value in data.model_dump().items():
+        setattr(project, key, value.strip())
+    project.updated_at = now(); session.add(project); session.commit()
+    return owned_project(project_id, user, session)
+
+
+@app.delete("/api/projects/{project_id}", status_code=204)
+def delete_project(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    for document in project.documents:
+        if document.storage_path:
+            Path(document.storage_path).unlink(missing_ok=True)
+    for link in session.exec(select(ProjectKnowledgeLink).where(ProjectKnowledgeLink.project_id == project.id)).all():
+        session.delete(link)
+    vector = session.exec(select(ProjectRadarVector).where(ProjectRadarVector.project_id == project.id)).first()
+    if vector:
+        session.delete(vector)
+    session.delete(project); session.commit()
+
+
 @app.get("/api/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     return owned_project(project_id, user, session)
@@ -310,9 +357,10 @@ async def upload_document(project_id: UUID, file: UploadFile = File(...), user: 
     if len(data) > MAX_SIZE:
         raise HTTPException(413, "El archivo supera 15 MB")
     filename = safe_name(file.filename or "documento")
-    path = Path(settings.upload_dir) / str(project.id) / filename
+    document = Document(filename=filename, content_type=content_type, size=len(data), storage_path="", extracted_text=extract_text(data, content_type), project_id=project.id)
+    path = Path(settings.upload_dir) / str(project.id) / f"{document.id}_{filename}"
     path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
-    document = Document(filename=filename, content_type=content_type, size=len(data), storage_path=str(path), extracted_text=extract_text(data, content_type), project_id=project.id)
+    document.storage_path = str(path)
     session.add(document); project.updated_at = now(); session.add(project); session.commit()
     return owned_project(project_id, user, session)
 
@@ -394,6 +442,18 @@ def document_media(project_id: UUID, document_id: UUID, user: User = Depends(cur
     return FileResponse(document.storage_path, media_type=document.content_type, filename=document.filename)
 
 
+@app.delete("/api/projects/{project_id}/documents/{document_id}", status_code=204)
+def delete_document(project_id: UUID, document_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    document = owned_document(project_id, document_id, user, session)
+    if document.storage_path:
+        Path(document.storage_path).unlink(missing_ok=True)
+    project = session.get(Project, project_id)
+    session.delete(document)
+    if project:
+        project.updated_at = now(); session.add(project)
+    session.commit()
+
+
 @app.post("/api/projects/{project_id}/evidence", response_model=ProjectOut, status_code=201)
 def add_evidence(project_id: UUID, data: EvidenceIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
@@ -425,7 +485,16 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
         )
         suggestions = sync_project_radar(project, user, session)
         selected_radar = [item for link, item in suggestions if link.status == RadarLinkStatus.approved]
-        data = analyze(project, f"{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}")
+        client = session.get(Client, project.client_id)
+        client_context = (
+            f"Nombre: {client.name}\nIndustria: {client.industry or 'No definida'}\nContexto: {client.description or 'No aportado'}"
+            if client else "Sin contexto de cliente"
+        )
+        source_manifest = (
+            f"RESUMEN DE FUENTES: {len(project.documents)} archivos, "
+            f"{len(project.evidence_items)} evidencias directas y {len(selected_radar)} señales aprobadas del Radar."
+        )
+        data = analyze(project, f"{source_manifest}\n\n{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}", client_context)
         existing = project.result
         if existing:
             for key, value in data.items():
@@ -440,3 +509,64 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
         raise HTTPException(502, "No se pudo completar el análisis")
     project.updated_at = now(); session.add(project); session.commit()
     return owned_project(project_id, user, session)
+
+
+@app.get("/api/projects/{project_id}/report")
+def export_project_report(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    if not project.result:
+        raise HTTPException(409, "El proyecto todavía no tiene un diagnóstico para descargar")
+    client = session.get(Client, project.client_id)
+    approved_links = session.exec(
+        select(ProjectKnowledgeLink).where(
+            ProjectKnowledgeLink.project_id == project.id,
+            ProjectKnowledgeLink.status == RadarLinkStatus.approved,
+        )
+    ).all()
+    radar_items = [session.get(KnowledgeItem, link.knowledge_item_id) for link in approved_links]
+    sources = [f"- Archivo: {document.filename}" for document in project.documents]
+    sources += [f"- {item.title}: {item.url or item.source or 'Nota interna'}" for item in project.evidence_items]
+    sources += [f"- Radar OLIVA: {item.title} — {item.url or item.source}" for item in radar_items if item]
+    result = project.result
+    report = f"""# Diagnóstico estratégico — {project.name}
+
+**Cliente:** {client.name if client else 'No disponible'}
+
+**Industria:** {(client.industry if client else '') or 'No definida'}
+
+**Confianza:** {result.confidence}
+
+**Modelo:** {result.model_used}
+
+**Fecha:** {result.created_at.strftime('%d/%m/%Y %H:%M')} UTC
+
+## Objetivo declarado
+
+{project.objective or 'No definido'}
+
+## Diagnóstico
+
+{result.diagnosis}
+
+## Evidencia
+
+{result.evidence}
+
+## Contradicciones
+
+{result.contradictions}
+
+## Hipótesis a refutar
+
+{result.hypotheses}
+
+## Pregunta estratégica
+
+{result.strategic_question}
+
+## Fuentes consideradas
+
+{chr(10).join(sources) or '- No se incorporaron fuentes adicionales.'}
+"""
+    filename = f"diagnostico_oliva_{project.id}.md"
+    return Response(report, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{filename}"'})

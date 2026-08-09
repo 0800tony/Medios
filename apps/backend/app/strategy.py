@@ -6,9 +6,15 @@ from .models import Project
 SYSTEM_PROMPT = """Sos OLIVA Strategy, Director de Planeamiento Estratégico Senior. Tu tarea es comprender el problema antes de proponer comunicación. Separá hechos, evidencia, percepciones e hipótesis. Buscá contradicciones, no confundas síntomas con causas e intentá refutar cada hipótesis. Si falta evidencia, decilo. Respondé exclusivamente JSON con: diagnosis, evidence, hypotheses, contradictions, strategic_question, confidence."""
 
 
-def analyze(project: Project, document_text: str) -> dict[str, str]:
+def analyze(project: Project, document_text: str, client_context: str = "") -> dict[str, str]:
     settings = get_settings()
-    context = f"Proyecto: {project.name}\nObjetivo declarado: {project.objective}\nBrief: {project.brief}\nDocumentos:\n{document_text[:70000]}"
+    context = (
+        f"Proyecto: {project.name}\n"
+        f"Cliente:\n{client_context or 'Sin contexto de cliente'}\n"
+        f"Objetivo declarado: {project.objective}\n"
+        f"Brief: {project.brief}\n"
+        f"Fuentes disponibles:\n{document_text[:70000]}"
+    )
     if settings.openai_api_key:
         client = OpenAI(api_key=settings.openai_api_key)
         response = client.chat.completions.create(

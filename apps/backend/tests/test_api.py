@@ -35,6 +35,13 @@ def test_mvp_flow():
         project = client.post("/api/projects", headers=headers, json={"name": "Lanzamiento", "client_id": created_client.json()["id"], "brief": "Necesitamos crecer", "objective": "Aumentar consideración"})
         assert project.status_code == 201
         project_id = project.json()["id"]
+        updated_client = client.patch(f"/api/clients/{created_client.json()['id']}", headers=headers, json={"name": "Marca Demo", "industry": "Retail y servicios", "description": "Opera en Uruguay"})
+        assert updated_client.status_code == 200
+        assert updated_client.json()["industry"] == "Retail y servicios"
+        updated_project = client.patch(f"/api/projects/{project_id}", headers=headers, json={"name": "Lanzamiento regional", "brief": "Necesitamos crecer con evidencia", "objective": "Aumentar consideración"})
+        assert updated_project.status_code == 200
+        assert updated_project.json()["name"] == "Lanzamiento regional"
+        assert client.delete(f"/api/clients/{created_client.json()['id']}", headers=headers).status_code == 409
         page = {"title": "Confianza en retail", "source": "Radar Demo", "description": "Señales que construyen confianza", "text": "La exhibición transparente aumenta la consideración.", "final_url": "https://example.com/radar"}
         with patch("app.main.read_link", return_value=page):
             radar_link = client.post("/api/knowledge/links", headers=headers, json={"kind": "article", "title": "Consideracion y confianza", "url": "https://example.com/radar", "source": "Radar Demo", "notes": "La consideracion crece con señales de confianza.", "tags": "consideracion confianza"})
@@ -79,11 +86,23 @@ def test_mvp_flow():
         assert result.status_code == 200
         assert result.json()["status"] == "completed"
         assert result.json()["result"]["strategic_question"]
+        report = client.get(f"/api/projects/{project_id}/report", headers=headers)
+        assert report.status_code == 200
+        assert report.headers["content-type"].startswith("text/markdown")
+        assert "Marca Demo" in report.text
+        assert "investigacion.txt" in report.text
+        assert "Radar OLIVA" in report.text
+        upload_document = next(item for item in result.json()["documents"] if item["filename"] == "investigacion.txt")
+        assert client.delete(f"/api/projects/{project_id}/documents/{upload_document['id']}", headers=headers).status_code == 204
+        assert client.get(f"/api/projects/{project_id}/documents/{upload_document['id']}/media", headers=headers).status_code == 404
         assert client.delete(f"/api/projects/{project_id}/evidence/{note_id}", headers=headers).status_code == 204
         assert client.delete(f"/api/projects/{project_id}/evidence/{reference_id}", headers=headers).status_code == 204
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["evidence_items"] == []
         assert client.delete(f"/api/knowledge/{radar_id}", headers=headers).status_code == 204
         assert client.delete(f"/api/knowledge/{radar_photo_id}", headers=headers).status_code == 204
+        assert client.delete(f"/api/projects/{project_id}", headers=headers).status_code == 204
+        assert client.get(f"/api/projects/{project_id}", headers=headers).status_code == 404
+        assert client.delete(f"/api/clients/{created_client.json()['id']}", headers=headers).status_code == 204
 
 
 def test_project_is_private():

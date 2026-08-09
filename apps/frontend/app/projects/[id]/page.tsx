@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
-import { DocumentItem, EvidenceItem, Project, RadarSuggestion, request, requestBlob } from "@/lib/api";
+import { DocumentItem, EvidenceItem, Project, RadarSuggestion, request, requestBlob, saveBlob } from "@/lib/api";
 
 type EvidenceMode = "file" | "audio" | "mail" | "reference" | "client_note";
 
@@ -21,6 +21,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const [busy, setBusy] = useState(false);
   const [transcriptFor,setTranscriptFor]=useState("");
   const [manualTranscript,setManualTranscript]=useState("");
+  const [editingProject,setEditingProject]=useState(false);
 
   const load = () => request<Project>(`/api/projects/${params.id}`).then(setProject);
   const loadRadar = () => request<RadarSuggestion[]>(`/api/projects/${params.id}/radar`).then(setRadar);
@@ -80,6 +81,37 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     finally { setBusy(false); }
   }
 
+  async function removeDocument(document: DocumentItem) {
+    if (!confirm(`¿Quitar “${document.filename}” y su contenido del análisis?`)) return;
+    setBusy(true); setError("");
+    try { await request(`/api/projects/${params.id}/documents/${document.id}`, { method: "DELETE" }); await load(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  async function downloadDocument(document: DocumentItem) {
+    setError("");
+    try { saveBlob(await requestBlob(`/api/projects/${params.id}/documents/${document.id}/media`), document.filename); }
+    catch (e) { setError((e as Error).message); }
+  }
+
+  async function updateProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      setProject(await request<Project>(`/api/projects/${params.id}`, { method: "PATCH", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }));
+      setEditingProject(false);
+      await loadRadar();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  async function deleteProject() {
+    if (!confirm(`¿Eliminar definitivamente el proyecto “${project?.name}”, sus archivos y el diagnóstico?`)) return;
+    setBusy(true); setError("");
+    try { await request(`/api/projects/${params.id}`, { method: "DELETE" }); location.href = "/"; }
+    catch (e) { setError((e as Error).message); setBusy(false); }
+  }
+
   async function analyze() {
     setBusy(true); setError("");
     try {
@@ -107,7 +139,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     <Nav/>
     <div className="pagehead">
       <div><p className="eyebrow">Proyecto · {evidenceCount} evidencias</p><h1>{project.name}</h1><span className={`status ${project.status}`}>{project.status}</span></div>
-      {project.result && <Link className="btn" href={`/projects/${project.id}/result`}>Ver resultado</Link>}
+      <div className="page-actions">{project.result && <Link className="btn" href={`/projects/${project.id}/result`}>Ver resultado</Link>}<button className="btn ghost" onClick={()=>setEditingProject(value=>!value)}>{editingProject?"Cancelar edición":"Editar proyecto"}</button></div>
     </div>
 
     <section className="project-layout">
@@ -165,7 +197,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
 
         <div className="evidence-list">
           {project.documents.map(document => <article className={`evidence-row ${document.category}`} key={document.id}>
-            <span className="evidence-icon">{document.category === "audio" ? "AUDIO" : document.category === "email" ? "MAIL" : document.filename.toLowerCase().endsWith(".docx") ? "WORD" : "DOC"}</span><div><strong>{document.filename}</strong><p>{Math.ceil(document.size / 1024)} KB · {document.processed ? document.category === "audio" ? "transcripción disponible" : "texto extraído" : "transcripción pendiente"}</p>{document.text_excerpt&&<p className="document-excerpt">{document.text_excerpt}</p>}{document.category === "audio"&&<><AudioPlayer projectId={project.id} item={document}/>{!document.processed&&(transcriptFor===document.id?<div className="transcript-box"><textarea value={manualTranscript} onChange={e=>setManualTranscript(e.target.value)} placeholder="Pegá o escribí la transcripción…"/><button className="btn lime" disabled={busy||manualTranscript.trim().length<2} onClick={()=>saveTranscript(document)}>Guardar transcripción</button></div>:<button className="text-action" onClick={()=>setTranscriptFor(document.id)}>Agregar transcripción</button>)}</>}</div>
+            <span className="evidence-icon">{document.category === "audio" ? "AUDIO" : document.category === "email" ? "MAIL" : document.filename.toLowerCase().endsWith(".docx") ? "WORD" : "DOC"}</span><div><strong>{document.filename}</strong><p>{Math.ceil(document.size / 1024)} KB · {document.processed ? document.category === "audio" ? "transcripción disponible" : "texto extraído" : "transcripción pendiente"}</p>{document.text_excerpt&&<p className="document-excerpt">{document.text_excerpt}</p>}{document.category === "audio"&&<><AudioPlayer projectId={project.id} item={document}/>{!document.processed&&(transcriptFor===document.id?<div className="transcript-box"><textarea value={manualTranscript} onChange={e=>setManualTranscript(e.target.value)} placeholder="Pegá o escribí la transcripción…"/><button className="btn lime" disabled={busy||manualTranscript.trim().length<2} onClick={()=>saveTranscript(document)}>Guardar transcripción</button></div>:<button className="text-action" onClick={()=>setTranscriptFor(document.id)}>Agregar transcripción</button>)}</>}</div><div className="row-actions"><button onClick={()=>downloadDocument(document)}>Descargar</button><button className="danger-link" onClick={()=>removeDocument(document)}>Quitar</button></div>
           </article>)}
           {project.evidence_items.map(item => <article className="evidence-row" key={item.id}>
             <span className="evidence-icon">{item.kind === "reference" ? "URL" : "NOTA"}</span>
@@ -177,10 +209,10 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
       </div>
 
       <aside className="card project-brief">
-        <p className="eyebrow">Punto de partida</p><h3>Objetivo declarado</h3><p>{project.objective || "Sin definir"}</p>
-        <h3>Brief</h3><p className="muted">{project.brief || "Sin contexto adicional"}</p>
+        {editingProject?<form onSubmit={updateProject}><p className="eyebrow">Editar proyecto</p><div className="field"><label>Nombre</label><input name="name" required defaultValue={project.name}/></div><div className="field"><label>Objetivo declarado</label><input name="objective" defaultValue={project.objective}/></div><div className="field"><label>Brief / contexto</label><textarea name="brief" defaultValue={project.brief}/></div><div className="inline-actions"><button className="btn lime" disabled={busy}>Guardar cambios</button><button type="button" className="btn ghost" onClick={()=>setEditingProject(false)}>Cancelar</button></div></form>:<><p className="eyebrow">Punto de partida</p><h3>Objetivo declarado</h3><p>{project.objective || "Sin definir"}</p><h3>Brief</h3><p className="muted">{project.brief || "Sin contexto adicional"}</p></>}
         <hr/><p className="muted"><strong>OLIVA Strategy</strong> tratará los archivos, enlaces y notas como fuentes diferenciadas. Una opinión del cliente no se convertirá automáticamente en un hecho.</p>
         {radar.length > 0 && <div className="radar-suggestions"><p className="eyebrow">Radar aplicable</p><p className="radar-help">La IA encontró estas conexiones. Aprobá las que deban entrar al próximo análisis.</p>{radar.map(suggestion => <div className={`radar-suggestion ${suggestion.status}`} key={suggestion.item.id}><span className="match-score">{suggestion.score}% afinidad</span><strong>{suggestion.item.title}</strong><small>{suggestion.reason}</small><small>{suggestion.item.kind} · {suggestion.item.source || "Radar OLIVA"}</small><div className="suggestion-actions"><button className={suggestion.status === "approved" ? "selected" : ""} disabled={busy} onClick={() => decideRadar(suggestion, "approved")}>{suggestion.status === "approved" ? "✓ Aplicada" : "Aplicar"}</button><button className={suggestion.status === "dismissed" ? "selected dismiss" : ""} disabled={busy} onClick={() => decideRadar(suggestion, "dismissed")}>{suggestion.status === "dismissed" ? "Descartada" : "Descartar"}</button></div></div>)}</div>}
+        <hr/><button className="danger-link project-delete" disabled={busy} onClick={deleteProject}>Eliminar proyecto</button>
       </aside>
     </section>
 
