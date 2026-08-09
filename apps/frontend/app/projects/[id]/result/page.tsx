@@ -1,5 +1,45 @@
 "use client";
-import {useEffect,useState} from "react";import Link from "next/link";import Nav from "@/components/Nav";import {Dossier,Project,request,requestBlob,saveBlob} from "@/lib/api";
-const order=["resumen_ejecutivo","pedido_original","interpretacion_del_pedido","fuentes_y_calidad","que_sabemos","que_creemos","que_no_sabemos","diagnostico_del_problema","objetivos_diferenciados","comportamiento_a_cambiar","categoria_y_competencia","antecedentes_oliva","audiencias","barreras","tension_humana","insight","oportunidad_estrategica","rol_de_marca","promesa","razones_para_creer","tono","canales_y_contextos","ruta_1","ruta_2","ruta_3","comparacion_de_rutas","riesgos","indicadores","preguntas_indispensables","preguntas_importantes","preguntas_deseables","proxima_decision"];
-function Content({v}:{v:unknown}){if(Array.isArray(v))return <ul className="structured">{v.map((x,i)=><li key={i}><Content v={x}/></li>)}</ul>;if(v&&typeof v==="object")return <dl className="structured">{Object.entries(v as Record<string,unknown>).map(([k,x])=><div key={k}><dt>{k.replaceAll("_"," ")}</dt><dd><Content v={x}/></dd></div>)}</dl>;return <p>{String(v??"")}</p>}
-export default function Result({params}:{params:{id:string}}){const[p,setP]=useState<Project|null>(null),[d,setD]=useState<Dossier|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);const load=()=>Promise.all([request<Project>(`/api/projects/${params.id}`),request<Dossier>(`/api/projects/${params.id}/strategy`)]).then(([a,b])=>{setP(a);setD(b)});useEffect(()=>{load().catch(e=>setError(e.message))},[]);async function approve(status:string){setBusy(true);try{setD(await request<Dossier>(`/api/projects/${params.id}/strategy/approval`,{method:"PATCH",body:JSON.stringify({status,notes:""})}))}catch(e){setError((e as Error).message)}finally{setBusy(false)}}async function download(){setBusy(true);try{saveBlob(await requestBlob(`/api/projects/${params.id}/report`),`estrategia-${p?.name||"oliva"}.md`)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}if(!p||!d)return <main className="shell"><Nav/><div className="empty"><h2>{error||"Este proyecto todavía no tiene estrategia."}</h2><Link className="btn" href={`/projects/${params.id}`}>Volver</Link></div></main>;return <main className="shell result-page"><Nav/><div className="pagehead"><div><p className="eyebrow">Contrabrief · Versión {d.version}</p><h1>{p.name}</h1><div className="strategy-status"><span className="status">{d.approval_status.replace("_"," ")}</span><small>{d.model_used}</small></div></div><div className="page-actions"><button className="btn lime" onClick={download}>Descargar</button><Link className="btn ghost" href={`/projects/${p.id}/brief`}>Editar brief</Link><Link className="btn ghost" href={`/projects/${p.id}`}>← Evidencia</Link></div></div><section className="approval-bar"><div><strong>Aprobación humana</strong><p>La estrategia no habilita creatividad hasta ser aprobada.</p></div><div className="inline-actions"><button className="btn lime" disabled={busy} onClick={()=>approve("approved")}>Aprobar estrategia</button><button className="btn ghost" disabled={busy} onClick={()=>approve("changes")}>Pedir cambios</button>{d.approval_status==="approved"&&<Link className="btn" href={`/projects/${p.id}/creative`}>Revisar propuestas →</Link>}</div></section>{error&&<p className="error">{error}</p>}<section className="dossier">{order.map((k,i)=><article className={`card dossier-section ${["resumen_ejecutivo","diagnostico_del_problema","insight","oportunidad_estrategica","comparacion_de_rutas","proxima_decision"].includes(k)?"featured":""}`} key={k}><p className="section-number">{String(i+1).padStart(2,"0")}</p><h2>{k.replaceAll("_"," ")}</h2><Content v={d.sections[k]}/></article>)}</section></main>}
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import Nav from "@/components/Nav";
+import { Dossier, Project, request, requestBlob, saveBlob } from "@/lib/api";
+
+const order = ["resumen_ejecutivo", "pedido_original", "interpretacion_del_pedido", "fuentes_y_calidad", "que_sabemos", "que_creemos", "que_no_sabemos", "diagnostico_del_problema", "objetivos_diferenciados", "comportamiento_a_cambiar", "categoria_y_competencia", "antecedentes_oliva", "audiencias", "barreras", "tension_humana", "insight", "oportunidad_estrategica", "rol_de_marca", "promesa", "razones_para_creer", "tono", "canales_y_contextos", "ruta_1", "ruta_2", "ruta_3", "comparacion_de_rutas", "riesgos", "indicadores", "preguntas_indispensables", "preguntas_importantes", "preguntas_deseables", "proxima_decision"];
+
+function Content({ value }: { value: unknown }) {
+  if (Array.isArray(value)) return <ul className="structured">{value.map((item, index) => <li key={index}><Content value={item}/></li>)}</ul>;
+  if (value && typeof value === "object") return <dl className="structured">{Object.entries(value as Record<string, unknown>).map(([key, item]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd><Content value={item}/></dd></div>)}</dl>;
+  return <p>{String(value ?? "")}</p>;
+}
+
+export default function ResultPage({ params }: { params: { id: string } }) {
+  const [project, setProject] = useState<Project | null>(null);
+  const [dossier, setDossier] = useState<Dossier | null>(null);
+  const [missingStrategy, setMissingStrategy] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setError(""); setMissingStrategy(false);
+    const projectData = await request<Project>(`/api/projects/${params.id}`);
+    setProject(projectData);
+    try { setDossier(await request<Dossier>(`/api/projects/${params.id}/strategy`)); }
+    catch (error) { setMissingStrategy(true); setError((error as Error).message); }
+  }
+  useEffect(() => { load().catch(error => setError(error.message)); }, [params.id]);
+
+  async function generate() { setBusy(true); setError(""); try { await request(`/api/projects/${params.id}/analyze`, { method: "POST" }); await load(); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
+  async function approve(status: string) { setBusy(true); try { setDossier(await request<Dossier>(`/api/projects/${params.id}/strategy/approval`, { method: "PATCH", body: JSON.stringify({ status, notes: "" }) })); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
+  async function download() { setBusy(true); try { saveBlob(await requestBlob(`/api/projects/${params.id}/report`), `estrategia-${project?.name || "oliva"}.md`); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
+
+  if (!project) return <main className="shell"><Nav/><p>{error || "Cargando proyecto…"}</p></main>;
+  if (!dossier && missingStrategy) return <main className="shell"><Nav/><div className="empty"><p className="eyebrow">OLIVA Strategy</p><h2>El brief está guardado, pero todavía no se generó el contrabrief.</h2><p className="muted">Generarlo ahora analizará el brief, los documentos, las evidencias y las señales del Radar aprobadas.</p>{error && <p className="error">{error}</p>}<div className="inline-actions" style={{ justifyContent: "center" }}><button className="btn lime" disabled={busy} onClick={generate}>{busy ? "Generando estrategia…" : "Generar estrategia ahora →"}</button><Link className="btn ghost" href={`/projects/${params.id}/brief`}>Revisar brief</Link></div></div></main>;
+  if (!dossier) return <main className="shell"><Nav/><p>Cargando estrategia…</p></main>;
+
+  return <main className="shell result-page"><Nav/>
+    <div className="pagehead"><div><p className="eyebrow">Contrabrief · Versión {dossier.version}</p><h1>{project.name}</h1><div className="strategy-status"><span className="status">{dossier.approval_status.replace("_", " ")}</span><small>{dossier.model_used}</small></div></div><div className="page-actions"><button className="btn lime" onClick={download}>Descargar</button><Link className="btn ghost" href={`/projects/${project.id}/brief`}>Editar brief</Link><Link className="btn ghost" href={`/projects/${project.id}`}>← Evidencia</Link></div></div>
+    <section className="approval-bar"><div><strong>Aprobación humana</strong><p>La estrategia no habilita creatividad hasta ser aprobada.</p></div><div className="inline-actions"><button className="btn lime" disabled={busy} onClick={() => approve("approved")}>Aprobar estrategia</button><button className="btn ghost" disabled={busy} onClick={() => approve("changes")}>Pedir cambios</button>{dossier.approval_status === "approved" && <Link className="btn" href={`/projects/${project.id}/creative`}>Revisar propuestas →</Link>}</div></section>
+    {error && <p className="error">{error}</p>}<section className="dossier">{order.map((key, index) => <article className={`card dossier-section ${["resumen_ejecutivo", "diagnostico_del_problema", "insight", "oportunidad_estrategica", "comparacion_de_rutas", "proxima_decision"].includes(key) ? "featured" : ""}`} key={key}><p className="section-number">{String(index + 1).padStart(2, "0")}</p><h2>{key.replaceAll("_", " ")}</h2><Content value={dossier.sections[key]}/></article>)}</section>
+  </main>;
+}
