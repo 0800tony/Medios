@@ -39,6 +39,13 @@ function CriticalGapActions({ value, projectId }: { value: unknown; projectId: s
   })}</div></section>;
 }
 
+function StrategicRecommendation({ value }: { value: unknown }) {
+  if (!value || typeof value !== "object") return null;
+  const decision = value as Record<string, string>;
+  if (!decision.recomendacion_estrategica) return null;
+  return <section className="card strategic-recommendation"><p className="eyebrow">Recomendación de OLIVA Strategy</p><h2>{decision.recomendacion_estrategica}</h2><p>{decision.por_que_ahora}</p><dl className="structured"><div><dt>Primer movimiento</dt><dd><p>{decision.primer_movimiento}</p></dd></div><div><dt>No hacer todavía</dt><dd><p>{decision.no_hacer_aun}</p></dd></div></dl><p className="muted smallprint">Recomendación de trabajo basada en la evidencia disponible y aproximaciones explícitas. Se revisa con el aprendizaje del lanzamiento.</p></section>;
+}
+
 export default function ResultPage({ params }: { params: { id: string } }) {
   const [project, setProject] = useState<Project | null>(null);
   const [dossier, setDossier] = useState<Dossier | null>(null);
@@ -66,6 +73,7 @@ export default function ResultPage({ params }: { params: { id: string } }) {
   return <main className="shell result-page"><Nav/>
     <div className="pagehead"><div><p className="eyebrow">Contrabrief · Versión {dossier.version}</p><h1>{project.name}</h1><div className="strategy-status"><span className="status">{dossier.approval_status.replace("_", " ")}</span><small>{dossier.model_used}</small></div></div><div className="page-actions"><button className="btn lime" onClick={download}>Descargar</button><Link className="btn ghost" href={`/projects/${project.id}/brief`}>Editar brief</Link><Link className="btn ghost" href={`/projects/${project.id}`}>← Evidencia</Link></div></div>
     <section className="approval-bar"><div><strong>Aprobación humana</strong><p>Podés aprobar esta versión de trabajo y avanzar. Los vacíos críticos quedan visibles como riesgos a validar, no como un bloqueo.</p></div><div className="inline-actions"><button className="btn lime" disabled={busy} onClick={() => approve("approved")}>Aprobar versión de trabajo</button><button className="btn ghost" disabled={busy} onClick={() => approve("changes")}>Pedir cambios</button>{dossier.approval_status === "approved" && <Link className="btn" href={`/projects/${project.id}/creative`}>Revisar propuestas →</Link>}</div></section>
+    <StrategicRecommendation value={dossier.sections.proxima_decision}/>
     <CriticalGapActions value={dossier.sections.que_no_sabemos} projectId={project.id}/>
     {error && <p className="error">{error}</p>}<section className="dossier">{order.map((key, index) => <article className={`card dossier-section ${["resumen_ejecutivo", "que_no_sabemos", "diagnostico_del_problema", "insight", "oportunidad_estrategica", "comparacion_de_rutas", "proxima_decision"].includes(key) ? "featured" : ""}`} key={key}><p className="section-number">{String(index + 1).padStart(2, "0")}</p><h2>{key === "que_no_sabemos" ? "Vacíos críticos: qué falta y cómo resolverlo" : key.replaceAll("_", " ")}</h2>{key === "que_no_sabemos" ? <CriticalGaps value={dossier.sections[key]} projectId={project.id}/> : <Content value={dossier.sections[key]}/>}</article>)}</section>
   </main>;
