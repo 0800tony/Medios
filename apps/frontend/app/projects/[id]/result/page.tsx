@@ -12,7 +12,7 @@ const criticalFields: Record<string, string> = {
   "Capacidad productiva y de distribución": "capacity_distribution_evidence",
   "Priorización de audiencias": "audience_priority_evidence",
   "Prueba competitiva y de producto": "competitive_product_evidence",
-  "Motivación y comportamiento real de las personas": "motivations",
+  "Motivación y comportamiento real de las personas": "consumer_behavior_evidence",
 };
 
 function Content({ value }: { value: unknown }) {
@@ -26,13 +26,13 @@ function CriticalGaps({ value, projectId }: { value: unknown; projectId: string 
   return <div className="critical-gaps">{value.map((item, index) => {
     const gap = item as Record<string, string>;
     const field = criticalFields[gap.vacio];
-    return <article className="critical-gap" key={`${gap.vacio}-${index}`}><h3>{gap.vacio}</h3><p><strong>Por qué importa:</strong> {gap.por_que_importa}</p><p><strong>Pregunta a responder:</strong> {gap.pregunta}</p><p><strong>Qué cargar:</strong> {gap.evidencia_necesaria}</p>{field && <Link className="btn ghost" href={`/projects/${projectId}/brief#${field}`}>Responder este vacío en el brief →</Link>}</article>;
+    return <article className="critical-gap" key={`${gap.vacio}-${index}`}><h3>{gap.vacio}</h3><p><strong>Estado:</strong> {gap.estado || "Pendiente de validar"}</p>{gap.respuesta_cargada && <p><strong>Respuesta actual:</strong> {gap.respuesta_cargada}</p>}<p><strong>Por qué importa:</strong> {gap.por_que_importa}</p><p><strong>Validación necesaria:</strong> {gap.evidencia_necesaria}</p>{field && <Link className="btn ghost" href={`/projects/${projectId}/brief#${field}`}>Completar o mejorar esta validación →</Link>}</article>;
   })}</div>;
 }
 
 function CriticalGapActions({ value, projectId }: { value: unknown; projectId: string }) {
   if (!Array.isArray(value) || value.length === 0) return null;
-  return <section className="card resolve-gaps"><p className="eyebrow">Siguiente paso</p><h2>Completá estas respuestas para fortalecer la estrategia</h2><p className="muted">No editás el informe directamente: cada botón abre el campo correcto del brief y después generás una nueva versión.</p><div className="resolve-gap-actions">{value.map((item, index) => {
+  return <section className="card resolve-gaps"><p className="eyebrow">Siguiente paso</p><h2>Validá estas hipótesis antes de cerrar la estrategia</h2><p className="muted">No editás el informe directamente: cada botón abre el campo de validación correspondiente del brief. Después, generás una nueva versión.</p><div className="resolve-gap-actions">{value.map((item, index) => {
     const gap = item as Record<string, string>;
     const field = criticalFields[gap.vacio];
     return field ? <Link className="btn lime" key={`${gap.vacio}-${index}`} href={`/projects/${projectId}/brief#${field}`}>{index + 1}. Responder: {gap.vacio} →</Link> : null;

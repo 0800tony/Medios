@@ -19,21 +19,22 @@ def local_dossier(project:Project,brief:dict[str,str],source_names:list[str])->d
     request=(brief.get("request") or project.brief or "").lower()
     commercial=" ".join([brief.get("business_goal", ""), brief.get("commercial_goal", ""), brief.get("distribution", "")]).lower()
     gaps=[]
-    def add_gap(vacio:str,por_que_importa:str,pregunta:str,evidencia:str):
-        gaps.append({"vacio":vacio,"por_que_importa":por_que_importa,"pregunta":pregunta,"evidencia_necesaria":evidencia})
-    if not brief.get("motivations", "").strip() or not brief.get("behavior", "").strip():
-        add_gap("Motivación y comportamiento real de las personas","Sin conocer ocasión, disparador y barrera de compra no puede sostenerse una tensión humana ni un insight.","¿Quién compra, quién consume, en qué ocasión elige y por qué elegiría o descartaría esta propuesta?","Entrevistas a compradores y consumidores, observación en punto de venta y datos de ocasiones de consumo.")
-    if ("marca nueva" in request or "mantener" in request or not brief.get("positioning", "").strip()) and not brief.get("brand_architecture", "").strip():
-        add_gap("Arquitectura y relación entre las marcas","Sin definir el vínculo entre marca nueva, marca histórica y fabricante existe riesgo de canibalización o confusión.","¿Qué debe representar cada marca, qué comparte con la otra y qué nunca debería compartir?","Decisión de arquitectura de marca, mapa de públicos y prueba de comprensión de nombres y respaldos.")
-    if any(token in request for token in ("precio", "pesos", "$", "1000", "650")) and not brief.get("price_value_evidence", "").strip():
-        add_gap("Valor percibido y aceptación del precio","La diferencia de precio es una hipótesis comercial; comunicación no puede corregir una ecuación de valor no validada.","¿Qué atributos justifican el precio y cuánto están realmente dispuestos a pagar compradores y canales?","Prueba de producto y precio, comparación por gramaje y margen, entrevistas con consumidores y comercios.")
-    if any(token in commercial for token in ("crec", "produ", "unidad", "distrib", "venta", "100")) and not brief.get("capacity_distribution_evidence", "").strip():
-        add_gap("Capacidad productiva y de distribución","La meta comercial puede fracasar aunque la comunicación funcione si producción, reposición y cobertura no acompañan.","¿Cuánta producción, distribución y reposición soporta hoy el negocio y qué inversión requiere la meta?","Capacidad instalada, costos, márgenes, puntos de venta actuales/potenciales y plan logístico por territorio.")
+    def add_gap(vacio:str,por_que_importa:str,pregunta:str,evidencia:str,brief_key:str):
+        answer=brief.get(brief_key, "").strip()
+        gaps.append({"vacio":vacio,"estado":"Respuesta cargada · falta validación externa" if answer else "Sin respuesta cargada","respuesta_cargada":answer[:900],"por_que_importa":por_que_importa,"pregunta":pregunta,"evidencia_necesaria":evidencia})
+    if "alfajor" in request or brief.get("motivations", "").strip() or brief.get("behavior", "").strip():
+        add_gap("Motivación y comportamiento real de las personas","Sin conocer ocasión, disparador y barrera de compra no puede sostenerse una tensión humana ni un insight.","¿Quién compra, quién consume, en qué ocasión elige y por qué elegiría o descartaría esta propuesta?","Entrevistas a compradores y consumidores, observación en punto de venta y datos de ocasiones de consumo.","consumer_behavior_evidence")
+    if "marca nueva" in request or "mantener" in request or not brief.get("positioning", "").strip():
+        add_gap("Arquitectura y relación entre las marcas","Sin definir el vínculo entre marca nueva, marca histórica y fabricante existe riesgo de canibalización o confusión.","¿Qué debe representar cada marca, qué comparte con la otra y qué nunca debería compartir?","Decisión de arquitectura de marca, mapa de públicos y prueba de comprensión de nombres y respaldos.","brand_architecture")
+    if any(token in request for token in ("precio", "pesos", "$", "1000", "650")):
+        add_gap("Valor percibido y aceptación del precio","La diferencia de precio es una hipótesis comercial; comunicación no puede corregir una ecuación de valor no validada.","¿Qué atributos justifican el precio y cuánto están realmente dispuestos a pagar compradores y canales?","Prueba de producto y precio, comparación por gramaje y margen, entrevistas con consumidores y comercios.","price_value_evidence")
+    if any(token in commercial for token in ("crec", "produ", "unidad", "distrib", "venta", "100")):
+        add_gap("Capacidad productiva y de distribución","La meta comercial puede fracasar aunque la comunicación funcione si producción, reposición y cobertura no acompañan.","¿Cuánta producción, distribución y reposición soporta hoy el negocio y qué inversión requiere la meta?","Capacidad instalada, costos, márgenes, puntos de venta actuales/potenciales y plan logístico por territorio.","capacity_distribution_evidence")
     audience=brief.get("audience", "")
-    if (not audience.strip() or len(audience.split())>12) and not brief.get("audience_priority_evidence", "").strip():
-        add_gap("Priorización de audiencias","Una audiencia demasiado amplia mezcla comprador, consumidor y prescriptor, impidiendo elegir una conducta prioritaria.","¿Cuál es el segmento que destraba el crecimiento primero y qué papel cumplen los demás?","Tamaño y valor de segmentos, frecuencia, poder de decisión y comportamiento de compra por segmento.")
-    if not brief.get("competitive_product_evidence", "").strip():
-        add_gap("Prueba competitiva y de producto","La historia y la calidad declarada son percepciones internas hasta compararlas con alternativas reales.","¿En qué dimensión concreta el producto gana, empata o pierde frente a cada competidor?","Cata o prueba ciega, auditoría de precio/envase/exhibición y evidencia de rotación o recompra.")
+    if not audience.strip() or len(audience.split())>12:
+        add_gap("Priorización de audiencias","Una audiencia demasiado amplia mezcla comprador, consumidor y prescriptor, impidiendo elegir una conducta prioritaria.","¿Cuál es el segmento que destraba el crecimiento primero y qué papel cumplen los demás?","Tamaño y valor de segmentos, frecuencia, poder de decisión y comportamiento de compra por segmento.","audience_priority_evidence")
+    if brief.get("product", "").strip() or brief.get("competitors", "").strip():
+        add_gap("Prueba competitiva y de producto","La historia y la calidad declarada son percepciones internas hasta compararlas con alternativas reales.","¿En qué dimensión concreta el producto gana, empata o pierde frente a cada competidor?","Cata o prueba ciega, auditoría de precio/envase/exhibición y evidencia de rotación o recompra.","competitive_product_evidence")
     gaps=gaps[:6]
     top_names=[gap["vacio"] for gap in gaps[:3]]
     routes=[
@@ -57,11 +58,11 @@ def local_dossier(project:Project,brief:dict[str,str],source_names:list[str])->d
         "antecedentes_oliva":brief.get("previous_work") or insufficient,
         "audiencias":brief.get("audience") or insufficient,
         "barreras":brief.get("barriers") or insufficient,
-        "tension_humana":{"estado":"Pendiente de evidencia","vacio_que_la_bloquea":gaps[0] if gaps else insufficient},
-        "insight":{"estado":"No formulable todavía","criterio":"Debe emerger de una contradicción comprobada entre deseo y conducta, no del pedido del cliente."},
-        "oportunidad_estrategica":{"estado":"Hipótesis","formulacion":"Hacer que origen, producto y acceso trabajen como una sola propuesta de valor.","condicion":"Validar primero los tres vacíos prioritarios."},
-        "rol_de_marca":{"estado":"Pendiente","decision_necesaria":"Definir el papel diferencial de la marca nueva y del respaldo histórico."},
-        "promesa":{"estado":"Pendiente","decision_necesaria":"Elegir una promesa que supere la prueba de producto, precio y competencia."},
+        "tension_humana":{"estado":"Hipótesis a validar","formulacion_base":brief.get("motivations") or insufficient,"validacion_necesaria":gaps[0]["evidencia_necesaria"] if gaps else insufficient},
+        "insight":{"estado":"Aún no validado","criterio":"Debe emerger de una contradicción comprobada entre deseo y conducta, no del pedido del cliente."},
+        "oportunidad_estrategica":{"estado":"Hipótesis de trabajo","formulacion":"Hacer que origen, producto y acceso trabajen como una sola propuesta de valor.","condicion":f"Validar primero: {', '.join(top_names)}." if top_names else insufficient},
+        "rol_de_marca":{"estado":"Hipótesis de rol","respuesta_actual":brief.get("brand_architecture") or insufficient,"validacion_necesaria":"Confirmar que consumidores y canal comprendan la relación entre ambas marcas."},
+        "promesa":{"estado":"Hipótesis de promesa","formulacion_base":brief.get("positioning") or brief.get("product") or insufficient,"decision_necesaria":"Elegir una promesa que supere la prueba de producto, precio y competencia."},
         "razones_para_creer":brief.get("proof") or insufficient,
         "tono":brief.get("brand_tone") or insufficient,
         "canales_y_contextos":{"territorio":brief.get("territory") or insufficient,"distribucion":brief.get("distribution") or insufficient,"medios":brief.get("media_goal") or insufficient},

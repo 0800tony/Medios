@@ -125,6 +125,17 @@ class EvidenceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProjectResearchIn(BaseModel):
+    query: str = Field(min_length=3, max_length=600)
+
+
+class ProjectResearchOut(BaseModel):
+    summary: str
+    added_sources: int
+    sources: list[dict[str, str]]
+    model_used: str
+
+
 class KnowledgeLinkIn(BaseModel):
     kind: KnowledgeKind
     title: str = Field(default="", max_length=250)

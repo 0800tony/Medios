@@ -16,6 +16,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - biblioteca de evidencia con enlaces externos y notas de reuniones o entrevistas con el cliente;
 - Radar OLIVA para indexar artículos, videos y fotografías que puedan reutilizarse entre proyectos;
 - captura automática de título y fuente al guardar enlaces del Radar;
+- investigación web guiada por proyecto, con fuentes de mercado, prensa empresaria, medios especializados y foros claramente diferenciados;
 - Biblioteca Cognitiva para casos OLIVA, referencias visuales, criterios de marca, aprendizajes y casos premiados;
 - investigación de referencias en fuentes oficiales de Cannes Lions, D&AD, One Club, Clio y Effie;
 - análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;

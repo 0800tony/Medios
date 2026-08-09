@@ -16,9 +16,9 @@ from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
 from .models import Client, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDossier, StrategyResult, User, now
-from .schemas import ApprovalIn, BriefIn, BriefOut, ClientIn, ClientOut, ClientUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
+from .schemas import ApprovalIn, BriefIn, BriefOut, ClientIn, ClientOut, ClientUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
-from .intelligence import evaluate_creative, festival_research
+from .intelligence import evaluate_creative, festival_research, project_web_research
 
 settings = get_settings()
 
@@ -534,6 +534,29 @@ def add_evidence(project_id: UUID, data: EvidenceIn, user: User = Depends(curren
     item = EvidenceItem(**values, project_id=project.id)
     session.add(item); project.updated_at = now(); session.add(project); session.commit()
     return owned_project(project_id, user, session)
+
+
+@app.post("/api/projects/{project_id}/research", response_model=ProjectResearchOut)
+def research_project(project_id: UUID, data: ProjectResearchIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    summary, sources, model = project_web_research(project.name, project.objective, data.query)
+    if not settings.openai_api_key:
+        raise HTTPException(409, summary)
+    existing_urls = {item.url for item in project.evidence_items if item.url}
+    added = 0
+    for source in sources:
+        url = source.get("url", "")
+        if not url or url in existing_urls:
+            continue
+        host = urlparse(url).hostname or "Fuente web"
+        item = EvidenceItem(
+            kind="reference", title=source.get("title") or host, url=url, source=host,
+            content=f"Investigación web OLIVA. Síntesis inicial: {summary[:2500]}\n\nFuente externa por validar; no equivale a evidencia propia.",
+            project_id=project.id,
+        )
+        session.add(item); existing_urls.add(url); added += 1
+    project.updated_at = now(); session.add(project); session.commit()
+    return ProjectResearchOut(summary=summary, added_sources=added, sources=sources, model_used=model)
 
 
 @app.delete("/api/projects/{project_id}/evidence/{evidence_id}", status_code=204)

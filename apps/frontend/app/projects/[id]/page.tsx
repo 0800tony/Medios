@@ -5,7 +5,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import { DocumentItem, EvidenceItem, Project, RadarSuggestion, request, requestBlob, saveBlob } from "@/lib/api";
 
-type EvidenceMode = "file" | "audio" | "mail" | "reference" | "client_note";
+type EvidenceMode = "file" | "audio" | "mail" | "reference" | "client_note" | "research";
 
 function AudioPlayer({projectId,item}:{projectId:string;item:DocumentItem}){
   const [src,setSrc]=useState("");
@@ -22,6 +22,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   const [transcriptFor,setTranscriptFor]=useState("");
   const [manualTranscript,setManualTranscript]=useState("");
   const [editingProject,setEditingProject]=useState(false);
+  const [researchSummary,setResearchSummary]=useState("");
 
   const load = () => request<Project>(`/api/projects/${params.id}`).then(setProject);
   const loadRadar = () => request<RadarSuggestion[]>(`/api/projects/${params.id}/radar`).then(setRadar);
@@ -67,6 +68,15 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
         method: "POST", body: JSON.stringify({ ...values, kind })
       }));
       form.reset();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  async function researchWeb(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setResearchSummary("");
+    try {
+      const result = await request<{summary:string;added_sources:number}>(`/api/projects/${params.id}/research`, { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      setResearchSummary(`${result.summary}\n\nSe incorporaron ${result.added_sources} fuentes para revisar y usar en el próximo análisis.`); await load();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -152,6 +162,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
             <button className={mode === "audio" ? "active" : ""} onClick={() => setMode("audio")}>Audio</button>
             <button className={mode === "mail" ? "active" : ""} onClick={() => setMode("mail")}>Correo</button>
             <button className={mode === "reference" ? "active" : ""} onClick={() => setMode("reference")}>Enlace</button>
+            <button className={mode === "research" ? "active" : ""} onClick={() => setMode("research")}>Buscar en la web</button>
             <button className={mode === "client_note" ? "active" : ""} onClick={() => setMode("client_note")}>Nota del cliente</button>
           </div>
 
@@ -187,6 +198,13 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
             <button className="btn lime" disabled={busy}>Agregar referencia</button>
           </form>}
 
+          {mode === "research" && <form onSubmit={researchWeb}>
+            <p className="muted">Busca y cita fuentes públicas. Prioriza Kantar, NielsenIQ, Ipsos, GfK y Euromonitor; prensa empresaria argentina, medios especializados y foros como señales a contrastar.</p>
+            <div className="field"><label>¿Qué necesitás investigar?</label><textarea name="query" required minLength={3} placeholder="Ej. Mercado argentino de alfajores: consumo, precio, distribución, competidores y tendencias de compra"/></div>
+            <button className="btn lime" disabled={busy}>{busy ? "Investigando…" : "Buscar fuentes relevantes"}</button>
+            <p className="muted smallprint">Las fuentes encontradas quedan vinculadas al proyecto con su enlace original. Las notas de foros se identifican como señales, no como hechos.</p>
+          </form>}
+
           {mode === "client_note" && <form onSubmit={e => addEvidence(e, "client_note")}>
             <div className="field"><label>Título de la conversación</label><input name="title" required placeholder="Ej. Entrevista inicial con Gerencia"/></div>
             <div className="field"><label>Quién aportó la información</label><input name="source" placeholder="Nombre, cargo o área"/></div>
@@ -195,7 +213,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
           </form>}
         </div>
 
-        <div className="evidence-list">
+        {researchSummary && <div className="card research-summary"><p className="eyebrow">Investigación web</p><p>{researchSummary}</p></div>}<div className="evidence-list">
           {project.documents.map(document => <article className={`evidence-row ${document.category}`} key={document.id}>
             <span className="evidence-icon">{document.category === "audio" ? "AUDIO" : document.category === "email" ? "MAIL" : document.filename.toLowerCase().endsWith(".docx") ? "WORD" : "DOC"}</span><div><strong>{document.filename}</strong><p>{Math.ceil(document.size / 1024)} KB · {document.processed ? document.category === "audio" ? "transcripción disponible" : "texto extraído" : "transcripción pendiente"}</p>{document.text_excerpt&&<p className="document-excerpt">{document.text_excerpt}</p>}{document.category === "audio"&&<><AudioPlayer projectId={project.id} item={document}/>{!document.processed&&(transcriptFor===document.id?<div className="transcript-box"><textarea value={manualTranscript} onChange={e=>setManualTranscript(e.target.value)} placeholder="Pegá o escribí la transcripción…"/><button className="btn lime" disabled={busy||manualTranscript.trim().length<2} onClick={()=>saveTranscript(document)}>Guardar transcripción</button></div>:<button className="text-action" onClick={()=>setTranscriptFor(document.id)}>Agregar transcripción</button>)}</>}</div><div className="row-actions"><button onClick={()=>downloadDocument(document)}>Descargar</button><button className="danger-link" onClick={()=>removeDocument(document)}>Quitar</button></div>
           </article>)}

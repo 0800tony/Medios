@@ -86,6 +86,12 @@ def test_mvp_flow():
         note = client.post(f"/api/projects/{project_id}/evidence", headers=headers, json={"kind": "client_note", "title": "Reunion inicial", "source": "Gerencia comercial", "content": "El cliente percibe una brecha de confianza."})
         assert note.status_code == 201
         assert len(note.json()["evidence_items"]) == 2
+        with patch("app.main.settings.openai_api_key", "test-key"), patch("app.main.project_web_research", return_value=("El precio requiere contraste con consumidores.", [{"title": "Estudio de mercado", "url": "https://example.com/estudio"}], "modelo de prueba")):
+            research = client.post(f"/api/projects/{project_id}/research", headers=headers, json={"query": "Precio y consumo de la categoría"})
+        assert research.status_code == 200
+        assert research.json()["added_sources"] == 1
+        assert research.json()["sources"][0]["url"] == "https://example.com/estudio"
+        research_id = next(item["id"] for item in client.get(f"/api/projects/{project_id}", headers=headers).json()["evidence_items"] if item["url"] == "https://example.com/estudio")
         note_id = next(item["id"] for item in note.json()["evidence_items"] if item["kind"] == "client_note")
         result = client.post(f"/api/projects/{project_id}/analyze", headers=headers)
         assert result.status_code == 200
@@ -119,6 +125,7 @@ def test_mvp_flow():
         assert client.get(f"/api/projects/{project_id}/documents/{upload_document['id']}/media", headers=headers).status_code == 404
         assert client.delete(f"/api/projects/{project_id}/evidence/{note_id}", headers=headers).status_code == 204
         assert client.delete(f"/api/projects/{project_id}/evidence/{reference_id}", headers=headers).status_code == 204
+        assert client.delete(f"/api/projects/{project_id}/evidence/{research_id}", headers=headers).status_code == 204
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["evidence_items"] == []
         assert client.delete(f"/api/knowledge/{radar_id}", headers=headers).status_code == 204
         assert client.delete(f"/api/knowledge/{radar_photo_id}", headers=headers).status_code == 204
