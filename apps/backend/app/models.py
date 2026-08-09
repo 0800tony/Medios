@@ -169,3 +169,42 @@ class StrategyResult(SQLModel, table=True):
     model_used: str = "OLIVA Strategy — modo local"
     created_at: datetime = Field(default_factory=now)
     project: Optional[Project] = Relationship(back_populates="result")
+
+class ProjectBrief(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", unique=True, index=True)
+    data_json: str = "{}"
+    completeness: int = 0
+    updated_at: datetime = Field(default_factory=now)
+
+class StrategyDossier(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    version: int = 1
+    content_json: str = "{}"
+    approval_status: str = "draft"
+    approval_notes: str = ""
+    model_used: str = "OLIVA Strategy — modo local"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+class LibraryEntry(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    kind: str = Field(index=True)
+    title: str
+    url: str = ""; source: str = ""; description: str = ""; tags: str = ""
+    year: str = ""; festival: str = ""; award: str = ""; results: str = ""
+    client_id: Optional[UUID] = Field(default=None, foreign_key="client.id", index=True)
+    storage_path: str = ""; content_type: str = ""; size: int = 0; ai_analysis: str = ""
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=now)
+
+class CreativeSubmission(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    name: str; medium: str = ""; rationale: str = ""
+    filename: str; storage_path: str; content_type: str; size: int = 0
+    verdict: str = "pending"; score_json: str = "{}"; evaluation: str = ""
+    model_used: str = "OLIVA Creative Review — modo local"
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=now)

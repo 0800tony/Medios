@@ -127,7 +127,7 @@ class EvidenceOut(BaseModel):
 
 class KnowledgeLinkIn(BaseModel):
     kind: KnowledgeKind
-    title: str = Field(min_length=2, max_length=250)
+    title: str = Field(default="", max_length=250)
     url: HttpUrl
     source: str = Field(default="", max_length=250)
     notes: str = Field(default="", max_length=20000)
@@ -200,3 +200,19 @@ class ProjectOut(BaseModel):
     evidence_items: list[EvidenceOut] = []
     result: Optional[ResultOut] = None
     model_config = ConfigDict(from_attributes=True)
+
+class BriefIn(BaseModel): data: dict[str, str]
+class BriefOut(BaseModel):
+    data: dict[str, str]; completeness: int; missing_required: list[str]
+class ApprovalIn(BaseModel):
+    status: str; notes: str = Field(default="", max_length=10000)
+class DossierOut(BaseModel):
+    id: UUID; version: int; sections: dict[str, object]; approval_status: str; approval_notes: str; model_used: str; created_at: datetime
+class LibraryLinkIn(BaseModel):
+    kind: str; url: HttpUrl; description: str = Field(default="", max_length=20000); tags: str = Field(default="", max_length=1000); client_id: Optional[UUID] = None; results: str = Field(default="", max_length=5000)
+class LibraryOut(BaseModel):
+    id: UUID; kind: str; title: str; url: str; source: str; description: str; tags: str; year: str; festival: str; award: str; results: str; client_id: Optional[UUID]; content_type: str; size: int; ai_analysis: str; created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+class FestivalSearchIn(BaseModel): query: str = Field(min_length=3, max_length=500)
+class CreativeOut(BaseModel):
+    id: UUID; project_id: UUID; name: str; medium: str; rationale: str; filename: str; content_type: str; size: int; verdict: str; scores: dict[str, int]; evaluation: str; model_used: str; created_at: datetime

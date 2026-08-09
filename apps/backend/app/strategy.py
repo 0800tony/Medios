@@ -1,39 +1,30 @@
-import json
+import json, httpx
 from openai import OpenAI
 from .config import get_settings
 from .models import Project
 
-SYSTEM_PROMPT = """Sos OLIVA Strategy, Director de Planeamiento Estratégico Senior. Tu tarea es comprender el problema antes de proponer comunicación. Separá hechos, evidencia, percepciones e hipótesis. Buscá contradicciones, no confundas síntomas con causas e intentá refutar cada hipótesis. Si falta evidencia, decilo. Respondé exclusivamente JSON con: diagnosis, evidence, hypotheses, contradictions, strategic_question, confidence."""
+SYSTEM_PROMPT="""Sos OLIVA Strategy, Director de Planeamiento Estratégico Senior. Comprendé el problema antes de proponer comunicación. Separá hechos, evidencia, percepciones e hipótesis; buscá contradicciones; no confundas síntomas con causas. Si falta evidencia, decilo. Respondé exclusivamente JSON con diagnosis, evidence, hypotheses, contradictions, strategic_question y confidence."""
+DOSSIER_KEYS=["resumen_ejecutivo","pedido_original","interpretacion_del_pedido","fuentes_y_calidad","que_sabemos","que_creemos","que_no_sabemos","diagnostico_del_problema","objetivos_diferenciados","comportamiento_a_cambiar","categoria_y_competencia","antecedentes_oliva","audiencias","barreras","tension_humana","insight","oportunidad_estrategica","rol_de_marca","promesa","razones_para_creer","tono","canales_y_contextos","ruta_1","ruta_2","ruta_3","comparacion_de_rutas","riesgos","indicadores","preguntas_indispensables","preguntas_importantes","preguntas_deseables","proxima_decision"]
+MASTER_PROMPT="""Sos OLIVA Strategy, sistema de inteligencia estratégica de OLIVA Publicidad. Actuás como Director Senior de Planeamiento, no como redactor ni generador automático de campañas. No aceptes el problema declarado como verdadero. Nunca inventes datos. Separá hechos/evidencia, percepciones, hipótesis y vacíos. Diferenciá objetivos de negocio, comerciales, comunicación y medios. Analizá primero personas, luego organización y finalmente comunicación. Buscá contradicciones e intentá refutar hipótesis. Considerá Uruguay, Interior, competencia, distribución e historia interna. Entregá exactamente tres rutas estratégicas genuinamente distintas. Todo queda pendiente de aprobación humana. Respondé SOLO JSON válido sin markdown con exactamente estas claves: resumen_ejecutivo, pedido_original, interpretacion_del_pedido, fuentes_y_calidad, que_sabemos, que_creemos, que_no_sabemos, diagnostico_del_problema, objetivos_diferenciados, comportamiento_a_cambiar, categoria_y_competencia, antecedentes_oliva, audiencias, barreras, tension_humana, insight, oportunidad_estrategica, rol_de_marca, promesa, razones_para_creer, tono, canales_y_contextos, ruta_1, ruta_2, ruta_3, comparacion_de_rutas, riesgos, indicadores, preguntas_indispensables, preguntas_importantes, preguntas_deseables, proxima_decision. Si falta base, decilo explícitamente y formulá la pregunta necesaria."""
 
-
-def analyze(project: Project, document_text: str, client_context: str = "") -> dict[str, str]:
-    settings = get_settings()
-    context = (
-        f"Proyecto: {project.name}\n"
-        f"Cliente:\n{client_context or 'Sin contexto de cliente'}\n"
-        f"Objetivo declarado: {project.objective}\n"
-        f"Brief: {project.brief}\n"
-        f"Fuentes disponibles:\n{document_text[:70000]}"
-    )
-    if settings.openai_api_key:
-        client = OpenAI(api_key=settings.openai_api_key)
-        response = client.chat.completions.create(
-            model=settings.openai_model,
-            response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": context}],
-            temperature=0.2,
-        )
-        data = json.loads(response.choices[0].message.content or "{}")
-        data["model_used"] = settings.openai_model
-        return data
-
-    has_docs = bool(document_text.strip())
-    return {
-        "diagnosis": "El desafío declarado necesita validarse contra comportamiento, contexto de negocio y evidencia de las personas antes de convertirse en un problema de comunicación.",
-        "evidence": ("Se incorporaron documentos al análisis inicial." if has_docs else "No se incorporaron documentos; la evidencia disponible se limita al brief y al objetivo declarado."),
-        "hypotheses": "Hipótesis inicial: existe una brecha entre la percepción interna del problema y las motivaciones reales de las personas. Debe contrastarse con investigación.",
-        "contradictions": "Aún no hay evidencia suficiente para identificar contradicciones robustas. La ausencia de datos es, por ahora, la principal limitación.",
-        "strategic_question": "¿Qué comportamiento concreto debe cambiar, en quién, y qué evidencia demuestra hoy la barrera que lo impide?",
-        "confidence": "baja" if not has_docs else "media",
-        "model_used": "OLIVA Strategy — modo local",
-    }
+def responses_payload(payload:dict)->dict:
+    s=get_settings(); r=httpx.post("https://api.openai.com/v1/responses",headers={"Authorization":f"Bearer {s.openai_api_key}","Content-Type":"application/json"},json=payload,timeout=180);r.raise_for_status();return r.json()
+def response_text(body:dict)->str:
+    if body.get("output_text"): return body["output_text"]
+    return "\n".join(c.get("text","") for o in body.get("output",[]) for c in o.get("content",[]) if c.get("type")=="output_text")
+def responses_text(payload:dict)->tuple[str,str]:
+    b=responses_payload(payload);return response_text(b),b.get("model",payload.get("model","OpenAI"))
+def local_dossier(project:Project,brief:dict[str,str],source_names:list[str])->dict[str,object]:
+    missing=[k for k in ("business_goal","audience","competitors","proof","budget","deadline") if not brief.get(k,"").strip()]; insufficient="No cuento con información suficiente para sostener esta conclusión."
+    base={key:insufficient for key in DOSSIER_KEYS}
+    routes=[{"nombre":"Cambiar la lectura del problema","hipotesis":"Reencuadrar la categoría desde una tensión humana todavía por validar.","condicion":insufficient},{"nombre":"Hacer visible la prueba","hipotesis":"Convertir una ventaja comprobable en conducta y confianza.","condicion":"Requiere razones para creer verificables."},{"nombre":"Remover la barrera","hipotesis":"Reducir la fricción concreta que impide la acción.","condicion":"Requiere evidencia del comportamiento real."}]
+    base.update({"resumen_ejecutivo":f"Diagnóstico preliminar de {project.name}. {insufficient}","pedido_original":brief.get("request") or project.brief or "No documentado.","interpretacion_del_pedido":"El pedido declarado debe validarse antes de convertirse en problema de comunicación.","fuentes_y_calidad":{"fuentes":source_names or ["Brief inicial"],"limitacion":insufficient},"que_sabemos":[v for v in (brief.get("product"),brief.get("business_context"),project.objective) if v] or [insufficient],"que_creemos":["Puede existir una brecha entre la lectura interna y la motivación real; es una hipótesis a refutar."],"que_no_sabemos":missing or ["Las afirmaciones todavía deben contrastarse."],"diagnostico_del_problema":"El problema estructural debe demostrarse con evidencia de personas, negocio y mercado.","objetivos_diferenciados":{"negocio":brief.get("business_goal") or insufficient,"comercial":brief.get("commercial_goal") or insufficient,"comunicacion":brief.get("communication_goal") or project.objective or insufficient,"medios":brief.get("media_goal") or insufficient},"comportamiento_a_cambiar":brief.get("behavior") or insufficient,"categoria_y_competencia":brief.get("competitors") or insufficient,"antecedentes_oliva":brief.get("previous_work") or insufficient,"audiencias":brief.get("audience") or insufficient,"barreras":brief.get("barriers") or insufficient,"razones_para_creer":brief.get("proof") or insufficient,"tono":brief.get("brand_tone") or insufficient,"canales_y_contextos":{"territorio":brief.get("territory") or insufficient,"medios":brief.get("media_goal") or insufficient},"ruta_1":routes[0],"ruta_2":routes[1],"ruta_3":routes[2],"comparacion_de_rutas":"Las rutas priorizan reencuadre, demostración y remoción de fricción.","indicadores":brief.get("measurement") or insufficient,"preguntas_indispensables":[f"Completar y validar: {k}" for k in missing] or ["¿Qué evidencia independiente confirma el diagnóstico?"],"preguntas_importantes":["¿Qué contradicción existe entre lo que la organización dice y lo que las personas hacen?","¿Qué aprendizaje previo de OLIVA debe preservarse?"],"preguntas_deseables":["¿Qué señales culturales o casos de la Biblioteca amplían la lectura?"],"proxima_decision":"Completar vacíos críticos, validar el diagnóstico y someter la estrategia a aprobación humana."});return base
+def analyze_dossier(project:Project,brief:dict[str,str],context:str,source_names:list[str])->tuple[dict[str,object],str]:
+    s=get_settings()
+    if not s.openai_api_key:return local_dossier(project,brief,source_names),"OLIVA Strategy — modo local"
+    inp=json.dumps({"proyecto":project.name,"objetivo":project.objective,"brief":brief,"fuentes":source_names,"contenido":context[:120000]},ensure_ascii=False);text,model=responses_text({"model":s.openai_model,"instructions":MASTER_PROMPT,"input":inp,"text":{"format":{"type":"json_object"}}});data=json.loads(text or "{}");fallback=local_dossier(project,brief,source_names);return {k:data.get(k,fallback[k]) for k in DOSSIER_KEYS},model
+def analyze(project:Project,document_text:str,client_context:str="")->dict[str,str]:
+    s=get_settings();context=f"Proyecto: {project.name}\nCliente: {client_context}\nObjetivo: {project.objective}\nBrief: {project.brief}\nFuentes: {document_text[:70000]}"
+    if s.openai_api_key:
+        response=OpenAI(api_key=s.openai_api_key).chat.completions.create(model=s.openai_model,response_format={"type":"json_object"},messages=[{"role":"system","content":SYSTEM_PROMPT},{"role":"user","content":context}]);data=json.loads(response.choices[0].message.content or "{}");data["model_used"]=s.openai_model;return data
+    has=bool(document_text.strip());return {"diagnosis":"El desafío declarado necesita validarse contra comportamiento, negocio y personas.","evidence":"Se incorporaron fuentes." if has else "La evidencia se limita al brief.","hypotheses":"Puede existir una brecha entre percepción interna y motivaciones reales.","contradictions":"Aún no hay evidencia suficiente para identificar contradicciones robustas.","strategic_question":"¿Qué comportamiento debe cambiar, en quién, y qué evidencia demuestra la barrera?","confidence":"media" if has else "baja","model_used":"OLIVA Strategy — modo local"}

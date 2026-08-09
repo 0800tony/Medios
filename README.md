@@ -2,23 +2,30 @@
 
 MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usuarios, administrar clientes y proyectos, construir una memoria transversal de referencias y generar un diagnóstico inicial con OLIVA Strategy.
 
-## Alcance del Sprint 1
+## Alcance operativo actual
 
 - autenticación con email y JWT;
 - perfil de usuario con actualización de nombre y contraseña;
 - clientes y proyectos privados por usuario;
 - edición y eliminación protegida de clientes y proyectos;
+- brief estratégico guiado, editable, persistente y con indicador de completitud;
 - directorio visible de clientes con industria y contexto;
 - carga y extracción de texto de PDF, DOCX, TXT y Markdown;
 - carga de audio MP3, MP4, M4A, WAV o WEBM, con transcripción automática o manual;
 - importación de correos `.eml` y captura manual de mensajes;
 - biblioteca de evidencia con enlaces externos y notas de reuniones o entrevistas con el cliente;
 - Radar OLIVA para indexar artículos, videos y fotografías que puedan reutilizarse entre proyectos;
+- captura automática de título y fuente al guardar enlaces del Radar;
+- Biblioteca Cognitiva para casos OLIVA, referencias visuales, criterios de marca, aprendizajes y casos premiados;
+- investigación de referencias en fuentes oficiales de Cannes Lions, D&AD, One Club, Clio y Effie;
 - análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;
 - lectura protegida del contenido público de artículos y metadatos de videos;
 - búsqueda híbrida: coincidencia temática local y similitud semántica mediante embeddings cuando hay una API key;
 - sugerencias por proyecto con afinidad, motivo y decisión humana de aplicar o descartar;
-- análisis con OpenAI y modo local explícito cuando no hay API key;
+- contrabrief OLIVA Strategy de 32 apartados, versionado y sujeto a aprobación humana;
+- exactamente tres rutas estratégicas diferenciadas y preguntas priorizadas cuando falta información;
+- revisión de propuestas creativas contra la estrategia aprobada, con matriz publicitaria de diez criterios;
+- análisis con OpenAI Responses API y modo local explícito cuando no hay API key;
 - descarga del diagnóstico con manifiesto de fuentes e impresión en PDF;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
 - PostgreSQL, Docker Compose y tests de flujo crítico.
@@ -72,6 +79,11 @@ npm run build
 | `PATCH/DELETE` | `/api/clients/{id}` | Editar/eliminar un cliente sin proyectos |
 | `GET/POST` | `/api/projects` | Listar/crear proyectos |
 | `GET/PATCH/DELETE` | `/api/projects/{id}` | Consultar, editar o eliminar un proyecto |
+| `GET/PUT` | `/api/projects/{id}/brief` | Consultar o editar el brief estratégico completo |
+| `GET` | `/api/library` | Consultar la Biblioteca Cognitiva |
+| `POST` | `/api/library/links` | Guardar un caso, referencia o aprendizaje enlazado |
+| `POST` | `/api/library/files` | Guardar documentos e imágenes institucionales |
+| `POST` | `/api/library/festivals` | Investigar casos premiados en fuentes oficiales |
 | `GET` | `/api/knowledge` | Buscar la memoria global Radar OLIVA |
 | `POST` | `/api/knowledge/links` | Indexar un artículo o video |
 | `POST` | `/api/knowledge/photos` | Cargar e indexar una fotografía |
@@ -90,6 +102,9 @@ npm run build
 | `POST` | `/api/projects/{id}/evidence` | Agregar referencia o nota del cliente |
 | `DELETE` | `/api/projects/{id}/evidence/{evidence_id}` | Quitar evidencia textual |
 | `POST` | `/api/projects/{id}/analyze` | Ejecutar OLIVA Strategy |
+| `GET` | `/api/projects/{id}/strategy` | Consultar el contrabrief estratégico vigente |
+| `PATCH` | `/api/projects/{id}/strategy/approval` | Aprobar o pedir cambios a la estrategia |
+| `GET/POST` | `/api/projects/{id}/creative` | Listar o evaluar propuestas creativas |
 | `GET` | `/api/projects/{id}/report` | Descargar el diagnóstico y su manifiesto de fuentes |
 
 ## Producción

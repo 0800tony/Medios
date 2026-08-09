@@ -42,9 +42,12 @@ def test_mvp_flow():
         assert updated_project.status_code == 200
         assert updated_project.json()["name"] == "Lanzamiento regional"
         assert client.delete(f"/api/clients/{created_client.json()['id']}", headers=headers).status_code == 409
+        brief = client.put(f"/api/projects/{project_id}/brief", headers=headers, json={"data": {"request": "Crecer con evidencia", "business_context": "Mercado competitivo", "product": "Servicio", "business_goal": "Crecer", "commercial_goal": "Generar oportunidades", "communication_goal": "Aumentar confianza", "audience": "Personas decisoras", "competitors": "Alternativas regionales", "proof": "Trayectoria", "restrictions": "Presupuesto acotado", "territory": "Uruguay e Interior", "deadline": "Tres meses"}})
+        assert brief.status_code == 200
+        assert brief.json()["completeness"] == 100
         page = {"title": "Confianza en retail", "source": "Radar Demo", "description": "Señales que construyen confianza", "text": "La exhibición transparente aumenta la consideración.", "final_url": "https://example.com/radar"}
         with patch("app.main.read_link", return_value=page):
-            radar_link = client.post("/api/knowledge/links", headers=headers, json={"kind": "article", "title": "Consideracion y confianza", "url": "https://example.com/radar", "source": "Radar Demo", "notes": "La consideracion crece con señales de confianza.", "tags": "consideracion confianza"})
+            radar_link = client.post("/api/knowledge/links", headers=headers, json={"kind": "article", "title": "", "url": "https://example.com/radar", "source": "", "notes": "La consideracion crece con señales de confianza.", "tags": "consideracion confianza"})
         assert radar_link.status_code == 201
         assert radar_link.json()["index_status"] == "indexed"
         radar_id = radar_link.json()["id"]
@@ -53,7 +56,8 @@ def test_mvp_flow():
         assert radar_photo.json()["index_status"] == "manual"
         radar_photo_id = radar_photo.json()["id"]
         assert client.get(f"/api/knowledge/{radar_photo_id}/media", headers=headers).content.startswith(b"\x89PNG")
-        assert client.get("/api/knowledge?" + "q=confianza", headers=headers).json()[0]["title"] == "Consideracion y confianza"
+        assert radar_link.json()["title"] == "Confianza en retail"
+        assert client.get("/api/knowledge?" + "q=confianza", headers=headers).json()[0]["title"] == "Confianza en retail"
         suggestion = client.get(f"/api/projects/{project_id}/radar", headers=headers).json()[0]
         assert suggestion["item"]["id"] == radar_id
         assert suggestion["status"] == "suggested"
@@ -86,6 +90,19 @@ def test_mvp_flow():
         assert result.status_code == 200
         assert result.json()["status"] == "completed"
         assert result.json()["result"]["strategic_question"]
+        dossier = client.get(f"/api/projects/{project_id}/strategy", headers=headers)
+        assert dossier.status_code == 200
+        assert len(dossier.json()["sections"]) == 32
+        approval = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
+        assert approval.json()["approval_status"] == "approved"
+        creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
+        assert creative.status_code == 201
+        assert creative.json()["verdict"] == "pending"
+        with patch("app.main.read_link", return_value=page):
+            library = client.post("/api/library/links", headers=headers, json={"kind": "internal_case", "url": "https://example.com/caso", "description": "Caso exitoso", "results": "Crecimiento"})
+        assert library.status_code == 201
+        assert library.json()["title"] == "Confianza en retail"
+        assert len(client.get("/api/library?kind=internal_case", headers=headers).json()) == 1
         report = client.get(f"/api/projects/{project_id}/report", headers=headers)
         assert report.status_code == 200
         assert report.headers["content-type"].startswith("text/markdown")

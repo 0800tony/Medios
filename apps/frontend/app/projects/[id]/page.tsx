@@ -139,7 +139,7 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     <Nav/>
     <div className="pagehead">
       <div><p className="eyebrow">Proyecto · {evidenceCount} evidencias</p><h1>{project.name}</h1><span className={`status ${project.status}`}>{project.status}</span></div>
-      <div className="page-actions">{project.result && <Link className="btn" href={`/projects/${project.id}/result`}>Ver resultado</Link>}<button className="btn ghost" onClick={()=>setEditingProject(value=>!value)}>{editingProject?"Cancelar edición":"Editar proyecto"}</button></div>
+      <div className="page-actions"><Link className="btn lime" href={`/projects/${project.id}/brief`}>Completar brief</Link>{project.result&&<Link className="btn" href={`/projects/${project.id}/result`}>Ver estrategia</Link>}<Link className="btn ghost" href={`/projects/${project.id}/creative`}>Revisar piezas</Link><button className="btn ghost" onClick={()=>setEditingProject(value=>!value)}>{editingProject?"Cancelar edición":"Editar proyecto"}</button></div>
     </div>
 
     <section className="project-layout">

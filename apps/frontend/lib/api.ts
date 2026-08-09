@@ -8,6 +8,10 @@ export type KnowledgeItem = { id: string; kind: "article" | "video" | "photo"; t
 export type RadarSuggestion = { item: KnowledgeItem; status: "suggested" | "approved" | "dismissed"; score: number; reason: string };
 export type DocumentItem = { id:string; filename:string; content_type:string; size:number; category:"document"|"audio"|"email"; processed:boolean; text_excerpt:string; created_at:string };
 export type Project = { id: string; name: string; brief: string; objective: string; status: string; client_id: string; created_at: string; updated_at: string; documents: DocumentItem[]; evidence_items: EvidenceItem[]; result: Result | null };
+export type Brief={data:Record<string,string>;completeness:number;missing_required:string[]};
+export type Dossier={id:string;version:number;sections:Record<string,unknown>;approval_status:"draft"|"approved"|"changes"|"rejected"|"pending_information";approval_notes:string;model_used:string;created_at:string};
+export type LibraryItem={id:string;kind:string;title:string;url:string;source:string;description:string;tags:string;year:string;festival:string;award:string;results:string;client_id:string|null;content_type:string;size:number;ai_analysis:string;created_at:string};
+export type CreativeReview={id:string;project_id:string;name:string;medium:string;rationale:string;filename:string;content_type:string;size:number;verdict:string;scores:Record<string,number>;evaluation:string;model_used:string;created_at:string};
 
 export function token() { return typeof window === "undefined" ? "" : localStorage.getItem("oliva_token") || ""; }
 export function logout() { localStorage.removeItem("oliva_token"); localStorage.removeItem("oliva_user"); window.location.href = "/login"; }

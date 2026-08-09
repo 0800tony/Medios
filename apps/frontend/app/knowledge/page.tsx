@@ -72,9 +72,8 @@ export default function KnowledgePage() {
         <p className="eyebrow">Nueva señal</p><h2>Agregar al Radar</h2>
         <div className="tabs"><button className={mode === "article" ? "active" : ""} onClick={() => setMode("article")}>Artículo</button><button className={mode === "video" ? "active" : ""} onClick={() => setMode("video")}>Video</button><button className={mode === "photo" ? "active" : ""} onClick={() => setMode("photo")}>Foto</button></div>
         {mode !== "photo" ? <form onSubmit={addLink}>
-          <div className="field"><label>Título</label><input name="title" required placeholder={mode === "article" ? "Título del artículo" : "Título del video"}/></div>
           <div className="field"><label>Enlace</label><input name="url" type="url" required placeholder="https://…"/></div>
-          <div className="field"><label>Medio, autor o canal</label><input name="source" placeholder="Fuente"/></div>
+          <p className="muted smallprint">El título, el medio y la ubicación se completan automáticamente al leer el enlace.</p><details className="radar-details"><summary>Corregir datos manualmente (opcional)</summary><div className="field"><label>Título</label><input name="title"/></div><div className="field"><label>Medio, autor o canal</label><input name="source"/></div></details>
           <div className="field"><label>{mode === "video" ? "Resumen, ideas o transcripción" : "Qué te resultó interesante"}</label><textarea name="notes" placeholder={mode === "video" ? "Pegá una transcripción o anotá las ideas centrales del video…" : "Ideas, citas, patrones o motivos por los que conviene recordarlo…"}/></div>
           <div className="field"><label>Etiquetas</label><input name="tags" placeholder="retail, alimentos, tendencias, experiencia"/></div>
           <button className="btn lime" disabled={busy}>{busy ? "Indexando…" : "Guardar e indexar"}</button>

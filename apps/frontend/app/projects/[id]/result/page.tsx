@@ -1,50 +1,5 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import Nav from "@/components/Nav";
-import { Project, request, requestBlob, saveBlob } from "@/lib/api";
-
-export default function ResultPage({ params }: { params: { id: string } }) {
-  const [project, setProject] = useState<Project | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    request<Project>(`/api/projects/${params.id}`).then(setProject).catch(error => setError(error.message));
-  }, []);
-
-  async function downloadReport() {
-    setBusy(true); setError("");
-    try {
-      saveBlob(await requestBlob(`/api/projects/${params.id}/report`), `diagnostico-${project?.name || "oliva"}.md`);
-    } catch (error) { setError((error as Error).message); }
-    finally { setBusy(false); }
-  }
-
-  if (!project) return <main className="shell"><Nav/><p>{error || "Cargando…"}</p></main>;
-  if (!project.result) return <main className="shell"><Nav/><div className="empty"><h2>Este proyecto todavía no tiene diagnóstico.</h2><Link href={`/projects/${project.id}`} className="btn">Volver al proyecto</Link></div></main>;
-  const result = project.result;
-  const sources = [
-    ...project.documents.map(document => ({ id: document.id, label: document.filename, url: "" })),
-    ...project.evidence_items.map(item => ({ id: item.id, label: item.title, url: item.url })),
-  ];
-
-  return <main className="shell result-page">
-    <Nav/>
-    <div className="pagehead">
-      <div><p className="eyebrow">Resultado · Confianza {result.confidence}</p><h1>{project.name}</h1><p className="muted">{result.model_used}</p></div>
-      <div className="page-actions"><button className="btn lime" disabled={busy} onClick={downloadReport}>{busy ? "Preparando…" : "Descargar informe"}</button><button className="btn ghost" onClick={()=>window.print()}>Imprimir / PDF</button><Link href={`/projects/${project.id}`} className="btn ghost">← Evidencia</Link></div>
-    </div>
-    {error && <p className="error">{error}</p>}
-    <section className="results">
-      <article className="card wide"><p className="eyebrow">Diagnóstico</p><p className="quote">{result.diagnosis}</p></article>
-      <article className="card"><p className="eyebrow">Evidencia</p><p>{result.evidence}</p></article>
-      <article className="card"><p className="eyebrow">Contradicciones</p><p>{result.contradictions}</p></article>
-      <article className="card"><p className="eyebrow">Hipótesis a refutar</p><p>{result.hypotheses}</p></article>
-      <article className="card" style={{background:"var(--lime)"}}><p className="eyebrow">Pregunta estratégica</p><p className="quote">{result.strategic_question}</p></article>
-      <article className="card wide source-manifest"><p className="eyebrow">Fuentes incorporadas directamente</p>{sources.length ? <ul>{sources.map(source => <li key={source.id}>{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.label} ↗</a> : source.label}</li>)}</ul> : <p className="muted">El análisis se realizó únicamente con el brief y el contexto del cliente.</p>}<p className="muted smallprint">Las señales aprobadas desde Radar OLIVA también quedan enumeradas en el informe descargable.</p></article>
-    </section>
-    <div style={{height:70}}/>
-  </main>;
-}
+import {useEffect,useState} from "react";import Link from "next/link";import Nav from "@/components/Nav";import {Dossier,Project,request,requestBlob,saveBlob} from "@/lib/api";
+const order=["resumen_ejecutivo","pedido_original","interpretacion_del_pedido","fuentes_y_calidad","que_sabemos","que_creemos","que_no_sabemos","diagnostico_del_problema","objetivos_diferenciados","comportamiento_a_cambiar","categoria_y_competencia","antecedentes_oliva","audiencias","barreras","tension_humana","insight","oportunidad_estrategica","rol_de_marca","promesa","razones_para_creer","tono","canales_y_contextos","ruta_1","ruta_2","ruta_3","comparacion_de_rutas","riesgos","indicadores","preguntas_indispensables","preguntas_importantes","preguntas_deseables","proxima_decision"];
+function Content({v}:{v:unknown}){if(Array.isArray(v))return <ul className="structured">{v.map((x,i)=><li key={i}><Content v={x}/></li>)}</ul>;if(v&&typeof v==="object")return <dl className="structured">{Object.entries(v as Record<string,unknown>).map(([k,x])=><div key={k}><dt>{k.replaceAll("_"," ")}</dt><dd><Content v={x}/></dd></div>)}</dl>;return <p>{String(v??"")}</p>}
+export default function Result({params}:{params:{id:string}}){const[p,setP]=useState<Project|null>(null),[d,setD]=useState<Dossier|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);const load=()=>Promise.all([request<Project>(`/api/projects/${params.id}`),request<Dossier>(`/api/projects/${params.id}/strategy`)]).then(([a,b])=>{setP(a);setD(b)});useEffect(()=>{load().catch(e=>setError(e.message))},[]);async function approve(status:string){setBusy(true);try{setD(await request<Dossier>(`/api/projects/${params.id}/strategy/approval`,{method:"PATCH",body:JSON.stringify({status,notes:""})}))}catch(e){setError((e as Error).message)}finally{setBusy(false)}}async function download(){setBusy(true);try{saveBlob(await requestBlob(`/api/projects/${params.id}/report`),`estrategia-${p?.name||"oliva"}.md`)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}if(!p||!d)return <main className="shell"><Nav/><div className="empty"><h2>{error||"Este proyecto todavía no tiene estrategia."}</h2><Link className="btn" href={`/projects/${params.id}`}>Volver</Link></div></main>;return <main className="shell result-page"><Nav/><div className="pagehead"><div><p className="eyebrow">Contrabrief · Versión {d.version}</p><h1>{p.name}</h1><div className="strategy-status"><span className="status">{d.approval_status.replace("_"," ")}</span><small>{d.model_used}</small></div></div><div className="page-actions"><button className="btn lime" onClick={download}>Descargar</button><Link className="btn ghost" href={`/projects/${p.id}/brief`}>Editar brief</Link><Link className="btn ghost" href={`/projects/${p.id}`}>← Evidencia</Link></div></div><section className="approval-bar"><div><strong>Aprobación humana</strong><p>La estrategia no habilita creatividad hasta ser aprobada.</p></div><div className="inline-actions"><button className="btn lime" disabled={busy} onClick={()=>approve("approved")}>Aprobar estrategia</button><button className="btn ghost" disabled={busy} onClick={()=>approve("changes")}>Pedir cambios</button>{d.approval_status==="approved"&&<Link className="btn" href={`/projects/${p.id}/creative`}>Revisar propuestas →</Link>}</div></section>{error&&<p className="error">{error}</p>}<section className="dossier">{order.map((k,i)=><article className={`card dossier-section ${["resumen_ejecutivo","diagnostico_del_problema","insight","oportunidad_estrategica","comparacion_de_rutas","proxima_decision"].includes(k)?"featured":""}`} key={k}><p className="section-number">{String(i+1).padStart(2,"0")}</p><h2>{k.replaceAll("_"," ")}</h2><Content v={d.sections[k]}/></article>)}</section></main>}

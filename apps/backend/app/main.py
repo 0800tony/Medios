@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import UUID
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +15,10 @@ from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
 from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
-from .models import Client, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, Project, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyResult, User, now
-from .schemas import ClientIn, ClientOut, ClientUpdateIn, DocumentOut, DocumentTextIn, EmailTextIn, EvidenceIn, KnowledgeLinkIn, KnowledgeOut, LoginIn, ProjectIn, ProjectOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
-from .strategy import analyze
+from .models import Client, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDossier, StrategyResult, User, now
+from .schemas import ApprovalIn, BriefIn, BriefOut, ClientIn, ClientOut, ClientUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, TokenOut, UserOut, UserUpdateIn
+from .strategy import analyze, analyze_dossier
+from .intelligence import evaluate_creative, festival_research
 
 settings = get_settings()
 
@@ -138,6 +140,7 @@ def add_knowledge_link(data: KnowledgeLinkIn, user: User = Depends(current_user)
     except Exception:
         page = {"title": "", "source": "", "description": "", "text": "", "final_url": values["url"]}
     values["url"] = page.get("final_url") or values["url"]
+    values["title"] = values["title"].strip() or page.get("title") or urlparse(values["url"]).hostname or "Referencia sin título"
     if not values["source"]:
         values["source"] = page.get("source", "")
     item = KnowledgeItem(
@@ -233,6 +236,59 @@ def delete_knowledge(item_id: UUID, user: User = Depends(current_user), session:
     if vector: session.delete(vector)
     session.delete(item); session.commit()
 
+LIBRARY_KINDS={"internal_case","visual_reference","brand_guide","learning","award_research"}
+def owned_library(item_id:UUID,user:User,session:Session)->LibraryEntry:
+    item=session.get(LibraryEntry,item_id)
+    if not item or item.owner_id!=user.id:raise HTTPException(404,"Elemento de biblioteca no encontrado")
+    return item
+@app.get("/api/library",response_model=list[LibraryOut])
+def list_library(kind:str=Query(default=""),user:User=Depends(current_user),session:Session=Depends(get_session)):
+    items=session.exec(select(LibraryEntry).where(LibraryEntry.owner_id==user.id).order_by(LibraryEntry.created_at.desc())).all();return [i for i in items if not kind or i.kind==kind]
+@app.post("/api/library/links",response_model=LibraryOut,status_code=201)
+def add_library_link(data:LibraryLinkIn,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    if data.kind not in LIBRARY_KINDS:raise HTTPException(422,"Tipo inválido")
+    if data.client_id:owned_client(data.client_id,user,session)
+    url=str(data.url)
+    try:page=read_link(url,include_body=True)
+    except Exception:page={"title":"","source":"","description":"","text":"","final_url":url}
+    item=LibraryEntry(kind=data.kind,title=page.get("title") or urlparse(url).hostname or "Referencia",url=page.get("final_url") or url,source=page.get("source") or urlparse(url).hostname or "",description=data.description or page.get("description",""),tags=data.tags,results=data.results,client_id=data.client_id,ai_analysis=(page.get("text") or "")[:30000],owner_id=user.id);session.add(item);session.commit();session.refresh(item);return item
+@app.post("/api/library/files",response_model=LibraryOut,status_code=201)
+async def add_library_file(file:UploadFile=File(...),kind:str=Form(...),description:str=Form(default="",max_length=20000),tags:str=Form(default="",max_length=1000),client_id:str=Form(default=""),user:User=Depends(current_user),session:Session=Depends(get_session)):
+    if kind not in LIBRARY_KINDS:raise HTTPException(422,"Tipo inválido")
+    ct=file.content_type or "application/octet-stream"
+    if ct not in set(ALLOWED)|PHOTO_TYPES:raise HTTPException(415,"Usá PDF, Word, texto, JPG, PNG o WEBP")
+    raw=await file.read(MAX_SIZE+1)
+    if len(raw)>MAX_SIZE:raise HTTPException(413,"El archivo supera 15 MB")
+    cid=UUID(client_id) if client_id else None
+    if cid:owned_client(cid,user,session)
+    filename=safe_name(file.filename or "referencia");item=LibraryEntry(kind=kind,title=Path(filename).stem.replace("_"," "),description=description,tags=tags,client_id=cid,content_type=ct,size=len(raw),owner_id=user.id);path=Path(settings.upload_dir)/"library"/str(user.id)/f"{item.id}_{filename}";path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);item.storage_path=str(path)
+    if ct in PHOTO_TYPES:
+        try:v=analyze_photo(raw,ct,item.title,description);item.ai_analysis=f"{v.get('ai_summary','')}\n{v.get('ai_observations','')}".strip()
+        except Exception:item.ai_analysis="Referencia visual guardada; análisis pendiente."
+    else:
+        try:item.ai_analysis=extract_text(raw,ct)[:30000]
+        except Exception:item.ai_analysis="Archivo guardado; extracción pendiente."
+    session.add(item);session.commit();session.refresh(item);return item
+@app.post("/api/library/festivals",response_model=list[LibraryOut],status_code=201)
+def search_festival_cases(data:FestivalSearchIn,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    summary,sources,model=festival_research(data.query);records=[]
+    for source in sources[:12]:
+        item=LibraryEntry(kind="award_research",title=source["title"],url=source["url"],source=urlparse(source["url"]).hostname or "Festival",description=f"Investigación: {data.query}",ai_analysis=summary,tags="premios, festival",owner_id=user.id);session.add(item);records.append(item)
+    if not records:item=LibraryEntry(kind="award_research",title=f"Investigación: {data.query}",description=data.query,ai_analysis=summary,source=model,owner_id=user.id);session.add(item);records.append(item)
+    session.commit()
+    for i in records:session.refresh(i)
+    return records
+@app.get("/api/library/{item_id}/media")
+def library_media(item_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    item=owned_library(item_id,user,session)
+    if not item.storage_path or not Path(item.storage_path).exists():raise HTTPException(404,"Archivo no encontrado")
+    return FileResponse(item.storage_path,media_type=item.content_type)
+@app.delete("/api/library/{item_id}",status_code=204)
+def delete_library(item_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    item=owned_library(item_id,user,session)
+    if item.storage_path:Path(item.storage_path).unlink(missing_ok=True)
+    session.delete(item);session.commit()
+
 
 def owned_project(project_id: UUID, user: User, session: Session) -> Project:
     statement = select(Project).where(Project.id == project_id, Project.owner_id == user.id).options(selectinload(Project.documents), selectinload(Project.evidence_items), selectinload(Project.result))
@@ -322,12 +378,28 @@ def delete_project(project_id: UUID, user: User = Depends(current_user), session
     vector = session.exec(select(ProjectRadarVector).where(ProjectRadarVector.project_id == project.id)).first()
     if vector:
         session.delete(vector)
+    brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first()
+    if brief:session.delete(brief)
+    for d in session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id)).all():session.delete(d)
+    for c in session.exec(select(CreativeSubmission).where(CreativeSubmission.project_id==project.id)).all():
+        if c.storage_path:Path(c.storage_path).unlink(missing_ok=True)
+        session.delete(c)
     session.delete(project); session.commit()
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     return owned_project(project_id, user, session)
+
+BRIEF_REQUIRED={"request":"Pedido original","business_context":"Contexto de negocio","product":"Producto o servicio","business_goal":"Objetivo de negocio","commercial_goal":"Objetivo comercial","communication_goal":"Objetivo de comunicación","audience":"Personas prioritarias","competitors":"Categoría y competencia","proof":"Razones para creer","restrictions":"Restricciones","territory":"Territorio y distribución","deadline":"Plazos"}
+def brief_output(stored:ProjectBrief|None)->BriefOut:
+    data=json.loads(stored.data_json) if stored else {};missing=[v for k,v in BRIEF_REQUIRED.items() if not str(data.get(k,"")).strip()];return BriefOut(data=data,completeness=stored.completeness if stored else 0,missing_required=missing)
+@app.get("/api/projects/{project_id}/brief",response_model=BriefOut)
+def get_project_brief(project_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    owned_project(project_id,user,session);return brief_output(session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project_id)).first())
+@app.put("/api/projects/{project_id}/brief",response_model=BriefOut)
+def save_project_brief(project_id:UUID,data:BriefIn,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    p=owned_project(project_id,user,session);clean={str(k):str(v).strip() for k,v in data.data.items()};completeness=round(sum(bool(clean.get(k)) for k in BRIEF_REQUIRED)*100/len(BRIEF_REQUIRED));stored=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==p.id)).first() or ProjectBrief(project_id=p.id);stored.data_json=json.dumps(clean,ensure_ascii=False);stored.completeness=completeness;stored.updated_at=now();p.brief=clean.get("request") or p.brief;p.updated_at=now();session.add(stored);session.add(p);session.commit();session.refresh(stored);return brief_output(stored)
 
 
 @app.get("/api/projects/{project_id}/radar", response_model=list[RadarSuggestionOut])
@@ -494,7 +566,8 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             f"RESUMEN DE FUENTES: {len(project.documents)} archivos, "
             f"{len(project.evidence_items)} evidencias directas y {len(selected_radar)} señales aprobadas del Radar."
         )
-        data = analyze(project, f"{source_manifest}\n\n{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}", client_context)
+        full_context=f"{source_manifest}\n\nCLIENTE:\n{client_context}\n\n{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}"
+        data = analyze(project, full_context, client_context)
         existing = project.result
         if existing:
             for key, value in data.items():
@@ -502,6 +575,7 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             session.add(existing)
         else:
             session.add(StrategyResult(project_id=project.id, **data))
+        stored_brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first();brief_data=json.loads(stored_brief.data_json) if stored_brief else {"request":project.brief,"communication_goal":project.objective};source_names=[d.filename for d in project.documents]+[e.title for e in project.evidence_items]+[f"Radar OLIVA: {i.title}" for i in selected_radar];dossier_data,dossier_model=analyze_dossier(project,brief_data,full_context,source_names);previous=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first();session.add(StrategyDossier(project_id=project.id,version=previous.version+1 if previous else 1,content_json=json.dumps(dossier_data,ensure_ascii=False),model_used=dossier_model))
         project.status = ProjectStatus.completed
     except Exception:
         project.status = ProjectStatus.failed
@@ -510,11 +584,44 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
     project.updated_at = now(); session.add(project); session.commit()
     return owned_project(project_id, user, session)
 
+def dossier_output(d:StrategyDossier)->DossierOut:return DossierOut(id=d.id,version=d.version,sections=json.loads(d.content_json),approval_status=d.approval_status,approval_notes=d.approval_notes,model_used=d.model_used,created_at=d.created_at)
+@app.get("/api/projects/{project_id}/strategy",response_model=DossierOut)
+def get_strategy(project_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    owned_project(project_id,user,session);d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project_id).order_by(StrategyDossier.version.desc())).first()
+    if not d:raise HTTPException(404,"El proyecto todavía no tiene un contrabrief estratégico")
+    return dossier_output(d)
+@app.patch("/api/projects/{project_id}/strategy/approval",response_model=DossierOut)
+def approve_strategy(project_id:UUID,data:ApprovalIn,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    owned_project(project_id,user,session)
+    if data.status not in {"approved","changes","rejected","pending_information"}:raise HTTPException(422,"Estado inválido")
+    d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project_id).order_by(StrategyDossier.version.desc())).first()
+    if not d:raise HTTPException(404,"El proyecto todavía no tiene estrategia")
+    d.approval_status=data.status;d.approval_notes=data.notes.strip();d.updated_at=now();session.add(d);session.commit();session.refresh(d);return dossier_output(d)
+def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)
+@app.get("/api/projects/{project_id}/creative",response_model=list[CreativeOut])
+def list_creative(project_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    owned_project(project_id,user,session);return [creative_output(i) for i in session.exec(select(CreativeSubmission).where(CreativeSubmission.project_id==project_id).order_by(CreativeSubmission.created_at.desc())).all()]
+@app.post("/api/projects/{project_id}/creative",response_model=CreativeOut,status_code=201)
+async def review_creative(project_id:UUID,file:UploadFile=File(...),name:str=Form(...,min_length=2,max_length=250),medium:str=Form(default="",max_length=250),rationale:str=Form(default="",max_length=10000),user:User=Depends(current_user),session:Session=Depends(get_session)):
+    p=owned_project(project_id,user,session);d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==p.id).order_by(StrategyDossier.version.desc())).first()
+    if not d or d.approval_status!="approved":raise HTTPException(409,"Primero debe aprobarse la estrategia vigente")
+    ct=file.content_type or "application/octet-stream"
+    if ct not in PHOTO_TYPES|{"application/pdf","text/plain","text/markdown"}:raise HTTPException(415,"Usá JPG, PNG, WEBP, PDF o texto")
+    raw=await file.read(MAX_SIZE+1)
+    if len(raw)>MAX_SIZE:raise HTTPException(413,"La pieza supera 15 MB")
+    filename=safe_name(file.filename or "pieza");item=CreativeSubmission(project_id=p.id,name=name.strip(),medium=medium.strip(),rationale=rationale.strip(),filename=filename,storage_path="",content_type=ct,size=len(raw),owner_id=user.id);path=Path(settings.upload_dir)/"creative"/str(p.id)/f"{item.id}_{filename}";path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);item.storage_path=str(path);client=session.get(Client,p.client_id);ev=evaluate_creative(path,ct,item.name,item.medium,item.rationale,json.loads(d.content_json),f"{client.name if client else ''}: {client.description if client else ''}");item.verdict=ev.get("verdict","pending");item.score_json=json.dumps(ev.get("scores",{}));item.evaluation=ev.get("evaluation","");item.model_used=ev.get("model_used","OLIVA Creative Review");session.add(item);session.commit();session.refresh(item);return creative_output(item)
+@app.get("/api/projects/{project_id}/creative/{creative_id}/media")
+def creative_media(project_id:UUID,creative_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
+    owned_project(project_id,user,session);item=session.get(CreativeSubmission,creative_id)
+    if not item or item.project_id!=project_id or item.owner_id!=user.id or not Path(item.storage_path).exists():raise HTTPException(404,"Pieza no encontrada")
+    return FileResponse(item.storage_path,media_type=item.content_type,filename=item.filename)
+
 
 @app.get("/api/projects/{project_id}/report")
 def export_project_report(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
-    if not project.result:
+    dossier=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first()
+    if not project.result and not dossier:
         raise HTTPException(409, "El proyecto todavía no tiene un diagnóstico para descargar")
     client = session.get(Client, project.client_id)
     approved_links = session.exec(
@@ -528,41 +635,29 @@ def export_project_report(project_id: UUID, user: User = Depends(current_user), 
     sources += [f"- {item.title}: {item.url or item.source or 'Nota interna'}" for item in project.evidence_items]
     sources += [f"- Radar OLIVA: {item.title} — {item.url or item.source}" for item in radar_items if item]
     result = project.result
+    sections=json.loads(dossier.content_json) if dossier else {}
+    full_strategy="\n\n".join(f"## {key.replace('_',' ').title()}\n\n{json.dumps(value,ensure_ascii=False,indent=2) if isinstance(value,(dict,list)) else value}" for key,value in sections.items())
+    if not full_strategy and result:
+        full_strategy=f"## Diagnóstico\n\n{result.diagnosis}\n\n## Evidencia\n\n{result.evidence}\n\n## Contradicciones\n\n{result.contradictions}\n\n## Hipótesis a refutar\n\n{result.hypotheses}\n\n## Pregunta estratégica\n\n{result.strategic_question}"
     report = f"""# Diagnóstico estratégico — {project.name}
 
 **Cliente:** {client.name if client else 'No disponible'}
 
 **Industria:** {(client.industry if client else '') or 'No definida'}
 
-**Confianza:** {result.confidence}
+**Estado:** {dossier.approval_status if dossier else 'sin aprobación'}
 
-**Modelo:** {result.model_used}
+**Versión:** {dossier.version if dossier else 1}
 
-**Fecha:** {result.created_at.strftime('%d/%m/%Y %H:%M')} UTC
+**Modelo:** {dossier.model_used if dossier else result.model_used}
+
+**Fecha:** {(dossier.created_at if dossier else result.created_at).strftime('%d/%m/%Y %H:%M')} UTC
 
 ## Objetivo declarado
 
 {project.objective or 'No definido'}
 
-## Diagnóstico
-
-{result.diagnosis}
-
-## Evidencia
-
-{result.evidence}
-
-## Contradicciones
-
-{result.contradictions}
-
-## Hipótesis a refutar
-
-{result.hypotheses}
-
-## Pregunta estratégica
-
-{result.strategic_question}
+{full_strategy}
 
 ## Fuentes consideradas
 
