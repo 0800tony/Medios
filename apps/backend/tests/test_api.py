@@ -93,6 +93,10 @@ def test_mvp_flow():
         dossier = client.get(f"/api/projects/{project_id}/strategy", headers=headers)
         assert dossier.status_code == 200
         assert len(dossier.json()["sections"]) == 32
+        critical_gaps = dossier.json()["sections"]["que_no_sabemos"]
+        assert len(critical_gaps) >= 3
+        assert {"vacio", "por_que_importa", "pregunta", "evidencia_necesaria"}.issubset(critical_gaps[0])
+        assert dossier.json()["sections"]["proxima_decision"]["resolver_primero"]
         approval = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
         assert approval.json()["approval_status"] == "approved"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
