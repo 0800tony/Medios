@@ -28,6 +28,12 @@ export default function BriefPage({ params }: { params: { id: string } }) {
       .catch(error => setError(error.message));
   }, [params.id]);
 
+  useEffect(() => {
+    if (!brief || typeof window === "undefined") return;
+    const field = window.location.hash.slice(1);
+    if (field) document.getElementById(`${field}-input`)?.focus();
+  }, [brief]);
+
   async function saveBrief(generateStrategy: boolean) {
     if (!formRef.current) return;
     setBusy(true); setSaved(false); setError("");
@@ -50,7 +56,7 @@ export default function BriefPage({ params }: { params: { id: string } }) {
     <section className="brief-progress"><div><strong>{brief.completeness}% del contexto mínimo completo</strong><p>Guardá y volvé todas las veces que necesites.</p></div><div className="progress"><span style={{ width: `${brief.completeness}%` }}/></div></section>
     {brief.missing_required.length > 0 && <div className="brief-alert"><strong>Falta información clave</strong><p>{brief.missing_required.join(" · ")}</p></div>}
     <form ref={formRef} className="brief-form" onSubmit={submit}>
-      {groups.map((group, index) => <section className="card brief-group" key={group.title}><p className="section-number">{String(index + 1).padStart(2, "0")}</p><h2>{group.title}</h2>{group.fields.map(([key, label, placeholder]) => <div className="field" id={key} key={key}><label>{label}</label><textarea name={key} defaultValue={brief.data[key] || ""} placeholder={placeholder || "Hechos, percepciones, dudas y fuentes…"}/></div>)}</section>)}
+      {groups.map((group, index) => <section className="card brief-group" key={group.title}><p className="section-number">{String(index + 1).padStart(2, "0")}</p><h2>{group.title}</h2>{group.fields.map(([key, label, placeholder]) => <div className="field" id={key} key={key}><label htmlFor={`${key}-input`}>{label}</label><textarea id={`${key}-input`} name={key} defaultValue={brief.data[key] || ""} placeholder={placeholder || "Hechos, percepciones, dudas y fuentes…"}/></div>)}</section>)}
       {error && <p className="error">{error}</p>}{saved && <p className="success">Brief guardado.</p>}
       <div className="brief-save"><button className="btn ghost" type="submit" disabled={busy}>{busy ? "Procesando…" : "Guardar y seguir después"}</button><button className="btn lime" type="button" disabled={busy} onClick={() => saveBrief(true)}>{busy ? "Generando estrategia…" : "Guardar y generar estrategia →"}</button><span>Generar crea una nueva versión del contrabrief.</span></div>
     </form><div style={{ height: 70 }}/>
