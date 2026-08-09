@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6"
     openai_search_model: str = "gpt-5.6"
-    openai_vision_model: str = "gpt-5.6-terra"
+    openai_vision_model: str = "gpt-5.6"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_transcription_model: str = "gpt-transcribe"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
