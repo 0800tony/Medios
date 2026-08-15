@@ -134,6 +134,8 @@ def test_mvp_flow():
         assert approved_plan.status_code == 200
         assert len(approved_plan.json()["content"]["propuestas_de_produccion"]) >= 3
         assert "guion" in approved_plan.json()["content"]["propuestas_de_produccion"][0]
+        assert len(approved_plan.json()["content"]["mesa_de_agentes"]) >= 5
+        assert len(approved_plan.json()["content"]["bocetos_visuales"]) >= 1
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "produccion_creativa"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
         assert creative.status_code == 201

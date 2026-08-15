@@ -29,6 +29,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - revisión de propuestas creativas contra la ruta estratégica aprobada, con matriz publicitaria de diez criterios;
 - OLIVA Creative Director entre estrategia y producción: tres plataformas de campaña editables, con tipos de campaña, estilo, medios, controles de marca y prueba de propiedad;
 - planificador de campaña y medios que, al elegir una plataforma, propone y deja editar piezas, soportes, cobertura territorial, fases e indicadores sin presentar hipótesis de consumo como datos verificados;
+- mesa creativa visible con aportes diferenciados de estrategia, dirección creativa, redacción, dirección de arte, medios y producción; incluye bocetos visuales de dirección de arte y guiones editables al aprobar el plan;
 - selección explícita de una plataforma antes de cargar materiales, para que cada pieza se revise contra un concepto, un plan de campaña y no contra un diagnóstico genérico;
 - agentes coordinados de briefing, investigación, estrategia, dirección creativa y curaduría de aprendizaje;
 - bandeja de aprobaciones: ningún aprendizaje, diagnóstico o evaluación queda incorporado como verdad sin revisión humana;
