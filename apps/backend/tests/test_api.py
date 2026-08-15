@@ -143,6 +143,20 @@ def test_mvp_flow():
         assert len(approved_plan.json()["content"]["mesa_de_agentes"]) >= 5
         assert len(approved_plan.json()["content"]["bocetos_visuales"]) >= 1
         assert approved_plan.json()["content"]["criterio_creativo"]["principios"]
+        edited_plan = approved_plan.json()["content"]
+        edited_plan["propuestas_de_produccion"][0]["guion"] = "Guion escrito y aprobado por el equipo."
+        preserved = client.patch(f"/api/projects/{project_id}/creative-plans/{plans.json()[0]['id']}", headers=headers, json={"content": edited_plan, "status": "approved"})
+        assert preserved.status_code == 200
+        assert preserved.json()["content"]["propuestas_de_produccion"][0]["guion"] == "Guion escrito y aprobado por el equipo."
+        edited_concept = selected_concept.json()["content"]
+        edited_concept["territorios"][0]["nombre"] = "Nombre elegido por el equipo"
+        assert client.patch(f"/api/projects/{project_id}/creative-concepts/{concept.json()['id']}", headers=headers, json={"content": edited_concept, "status": "selected"}).status_code == 200
+        assert client.get(f"/api/projects/{project_id}/creative-plans", headers=headers).json()[0]["content"]["propuestas_de_produccion"][0]["guion"] == "Guion escrito y aprobado por el equipo."
+        visual = client.post(f"/api/projects/{project_id}/creative-plans/{plans.json()[0]['id']}/visuals/generate", headers=headers, json={"title": "Kiosco de recreo", "focus": "Visualizar una pausa cotidiana en el punto de venta."})
+        assert visual.status_code == 201
+        visual_media = client.get(f"/api/projects/{project_id}/creative-visuals/{visual.json()['id']}/media", headers=headers)
+        assert visual_media.status_code == 200
+        assert visual_media.content.startswith(b"<svg")
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "produccion_creativa"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
         assert creative.status_code == 201
