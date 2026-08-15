@@ -25,6 +25,9 @@ export type ApprovalTask={id:string;project_id:string|null;kind:string;entity_id
 export type AgentDefinition={key:string;name:string;stage:string;description:string};
 export type AgentRun={id:string;project_id:string;agent_key:string;instruction:string;output:Record<string,unknown>;status:string;model_used:string;created_at:string};
 export type Foundation={references:{author:string;work:string;lens:string}[];creative_lenses:{group:string;names:string;lens:string}[];festivals:{id:string;name:string;url:string;focus:string}[];principle:string};
+export type ResearchSource={id:string;name:string;url:string;domain:string;country:string;topic:string;description:string;priority:number;active:boolean;is_foundational:boolean;created_at:string};
+export type CreativeNote={id:string;project_id:string;concept_id:string|null;kind:"idea"|"feedback"|"decision"|"reference";author:string;content:string;status:"open"|"applied"|"discarded";created_at:string;updated_at:string};
+export type ProductionPackage={campaign:string;status:string;strategy:string;deliverables:{pieza:string;formato:string;objetivo:string;guion:string;produccion:string}[];assets:string[];confirmations:string[];handoff:string[]};
 
 export function token() { return typeof window === "undefined" ? "" : localStorage.getItem("oliva_token") || ""; }
 export function logout() { localStorage.removeItem("oliva_token"); localStorage.removeItem("oliva_user"); window.location.href = "/login"; }

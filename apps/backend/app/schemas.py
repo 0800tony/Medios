@@ -149,6 +149,30 @@ class ProjectResearchOut(BaseModel):
     model_used: str
 
 
+class ResearchSourceIn(BaseModel):
+    name: str = Field(min_length=2, max_length=180)
+    url: HttpUrl
+    country: str = Field(default="Global", max_length=80)
+    topic: str = Field(default="general", max_length=120)
+    description: str = Field(default="", max_length=1000)
+    priority: int = Field(default=2, ge=1, le=5)
+    active: bool = True
+
+
+class ResearchSourceUpdateIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=180)
+    country: Optional[str] = Field(default=None, max_length=80)
+    topic: Optional[str] = Field(default=None, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    priority: Optional[int] = Field(default=None, ge=1, le=5)
+    active: Optional[bool] = None
+
+
+class ResearchSourceOut(BaseModel):
+    id: UUID; name: str; url: str; domain: str; country: str; topic: str; description: str; priority: int; active: bool; is_foundational: bool; created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class KnowledgeLinkIn(BaseModel):
     kind: KnowledgeKind
     title: str = Field(default="", max_length=250)
@@ -289,6 +313,37 @@ class CreativeVisualOut(BaseModel):
 class CreativeVisualGenerateIn(BaseModel):
     title: str = Field(default="Boceto de dirección de arte", min_length=3, max_length=180)
     focus: str = Field(default="", max_length=3000)
+    format: str = Field(default="concept board 3:2", max_length=120)
+    visual_style: str = Field(default="", max_length=1000)
+
+
+class CreativeTableIn(BaseModel):
+    question: str = Field(min_length=8, max_length=6000)
+
+
+class CreativeNoteIn(BaseModel):
+    content: str = Field(min_length=3, max_length=8000)
+    kind: str = Field(default="idea", pattern="^(idea|feedback|decision|reference)$")
+    author: str = Field(default="Equipo OLIVA", min_length=2, max_length=160)
+
+
+class CreativeNoteUpdateIn(BaseModel):
+    status: str = Field(pattern="^(open|applied|discarded)$")
+
+
+class CreativeNoteOut(BaseModel):
+    id: UUID; project_id: UUID; concept_id: Optional[UUID]; kind: str; author: str; content: str; status: str; created_at: datetime; updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductionPackageOut(BaseModel):
+    campaign: str
+    status: str
+    strategy: str
+    deliverables: list[dict[str, str]]
+    assets: list[str]
+    confirmations: list[str]
+    handoff: list[str]
 
 
 class ClientMemoryIn(BaseModel):

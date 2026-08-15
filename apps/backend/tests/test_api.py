@@ -41,6 +41,14 @@ def test_agent_model_routing():
 def test_mvp_flow():
     with TestClient(app) as client:
         headers = auth(client)
+        source_list = client.get("/api/research-sources", headers=headers)
+        assert source_list.status_code == 200
+        assert any(source["name"] == "Adlatina" for source in source_list.json())
+        source = next(source for source in source_list.json() if source["name"] == "Marketing Week")
+        assert client.patch(f"/api/research-sources/{source['id']}", headers=headers, json={"active": False}).json()["active"] is False
+        custom_source = client.post("/api/research-sources", headers=headers, json={"name": "Fuente de prueba", "url": "https://example.org/insights", "country": "Uruguay", "topic": "consumo", "description": "Prueba", "priority": 2})
+        assert custom_source.status_code == 201
+        assert client.delete(f"/api/research-sources/{custom_source.json()['id']}", headers=headers).status_code == 204
         created_client = client.post("/api/clients", headers=headers, json={"name": "Marca Demo", "industry": "Retail"})
         assert created_client.status_code == 201
         project = client.post("/api/projects", headers=headers, json={"name": "Lanzamiento", "client_id": created_client.json()["id"], "brief": "Necesitamos crecer", "objective": "Aumentar consideración"})
@@ -167,6 +175,15 @@ def test_mvp_flow():
         assert visual.status_code == 503
         assert "No se generó ningún boceto" in visual.json()["detail"]
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "produccion_creativa"
+        contribution = client.post(f"/api/projects/{project_id}/creative-notes", headers=headers, json={"kind": "idea", "author": "Equipo", "content": "Llevar la prueba de producto al momento de compra."})
+        assert contribution.status_code == 201
+        assert client.patch(f"/api/projects/{project_id}/creative-notes/{contribution.json()['id']}", headers=headers, json={"status": "applied"}).json()["status"] == "applied"
+        table = client.post(f"/api/projects/{project_id}/creative-table", headers=headers, json={"question": "¿Cómo hacemos más propia la pieza madre?"})
+        assert table.status_code == 201
+        assert len(table.json()["output"]["intervenciones"]) == 4
+        package = client.get(f"/api/projects/{project_id}/creative-plans/{plans.json()[0]['id']}/production-package", headers=headers)
+        assert package.status_code == 200
+        assert package.json()["deliverables"]
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
         assert creative.status_code == 201
         assert creative.json()["verdict"] == "revisar"

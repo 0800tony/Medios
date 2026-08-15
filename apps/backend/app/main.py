@@ -16,11 +16,12 @@ from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
 from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
-from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeConcept, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
-from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
+from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeConcept, CreativeNote, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, ResearchSource, StrategyDecision, StrategyDossier, StrategyResult, User, now
+from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeNoteIn, CreativeNoteOut, CreativeNoteUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeTableIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProductionPackageOut, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, ResearchSourceIn, ResearchSourceOut, ResearchSourceUpdateIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
-from .intelligence import evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
+from .intelligence import creative_table, evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, CREATIVE_REFERENCE_LENSES, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
+from .research_sources import DEFAULT_RESEARCH_SOURCES, source_payload
 
 settings = get_settings()
 
@@ -125,6 +126,26 @@ def learning_output(record: LearningRecord) -> LearningRecordOut:
 
 def agent_run_output(run: AgentRun) -> AgentRunOut:
     return AgentRunOut(id=run.id, project_id=run.project_id, agent_key=run.agent_key, instruction=run.instruction, output=json.loads(run.output_json), status=run.status, model_used=run.model_used, created_at=run.created_at)
+
+
+def research_source_output(source: ResearchSource) -> ResearchSourceOut:
+    return ResearchSourceOut.model_validate(source)
+
+
+def ensure_research_sources(user: User, session: Session) -> list[ResearchSource]:
+    sources = session.exec(select(ResearchSource).where(ResearchSource.owner_id == user.id)).all()
+    if sources:
+        return sources
+    for row in DEFAULT_RESEARCH_SOURCES:
+        session.add(ResearchSource(owner_id=user.id, is_foundational=True, **source_payload(row)))
+    session.commit()
+    return session.exec(select(ResearchSource).where(ResearchSource.owner_id == user.id)).all()
+
+
+def active_research_domains(user: User, session: Session) -> list[str]:
+    sources = ensure_research_sources(user, session)
+    active = sorted((source for source in sources if source.active), key=lambda source: (source.priority, source.country, source.name))
+    return list(dict.fromkeys(source.domain for source in active))[:90]
 
 
 def create_approval_task(session: Session, user: User, project_id: UUID | None, kind: str, entity_id: str, title: str, summary: str) -> ApprovalTask:
@@ -408,6 +429,46 @@ def festival_catalog(user: User = Depends(current_user)):
     return FESTIVAL_CATALOG
 
 
+@app.get("/api/research-sources", response_model=list[ResearchSourceOut])
+def list_research_sources(user: User = Depends(current_user), session: Session = Depends(get_session)):
+    sources = ensure_research_sources(user, session)
+    return [research_source_output(source) for source in sorted(sources, key=lambda source: (not source.active, source.priority, source.country, source.name))]
+
+
+@app.post("/api/research-sources", response_model=ResearchSourceOut, status_code=201)
+def create_research_source(data: ResearchSourceIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    ensure_research_sources(user, session)
+    values = data.model_dump(); values["url"] = str(values["url"]); values["domain"] = urlparse(values["url"]).hostname.lower().removeprefix("www.")
+    if session.exec(select(ResearchSource).where(ResearchSource.owner_id == user.id, ResearchSource.url == values["url"])).first():
+        raise HTTPException(409, "Esta fuente ya está en la Biblioteca Cognitiva")
+    source = ResearchSource(owner_id=user.id, is_foundational=False, **values)
+    session.add(source); session.commit(); session.refresh(source)
+    return research_source_output(source)
+
+
+@app.patch("/api/research-sources/{source_id}", response_model=ResearchSourceOut)
+def update_research_source(source_id: UUID, data: ResearchSourceUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    source = session.get(ResearchSource, source_id)
+    if not source or source.owner_id != user.id:
+        raise HTTPException(404, "Fuente no encontrada")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(source, key, value.strip() if isinstance(value, str) else value)
+    session.add(source); session.commit(); session.refresh(source)
+    return research_source_output(source)
+
+
+@app.delete("/api/research-sources/{source_id}", status_code=204)
+def delete_research_source(source_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    source = session.get(ResearchSource, source_id)
+    if not source or source.owner_id != user.id:
+        raise HTTPException(404, "Fuente no encontrada")
+    if source.is_foundational:
+        source.active = False; session.add(source)
+    else:
+        session.delete(source)
+    session.commit()
+
+
 @app.get("/api/learning", response_model=list[LearningRecordOut])
 def list_learning(project_id: UUID | None = None, client_id: UUID | None = None, status_filter: str = Query(default=""), user: User = Depends(current_user), session: Session = Depends(get_session)):
     records = session.exec(select(LearningRecord).where(LearningRecord.owner_id == user.id).order_by(LearningRecord.updated_at.desc())).all()
@@ -600,6 +661,7 @@ def delete_project(project_id: UUID, user: User = Depends(current_user), session
     for record in session.exec(select(LearningRecord).where(LearningRecord.project_id == project.id)).all(): session.delete(record)
     for task in session.exec(select(ApprovalTask).where(ApprovalTask.project_id == project.id)).all(): session.delete(task)
     for run in session.exec(select(AgentRun).where(AgentRun.project_id == project.id)).all(): session.delete(run)
+    for note in session.exec(select(CreativeNote).where(CreativeNote.project_id == project.id)).all(): session.delete(note)
     for draft in session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project.id)).all():
         if draft.storage_path: Path(draft.storage_path).unlink(missing_ok=True)
         session.delete(draft)
@@ -770,7 +832,7 @@ def add_evidence(project_id: UUID, data: EvidenceIn, user: User = Depends(curren
 @app.post("/api/projects/{project_id}/research", response_model=ProjectResearchOut)
 def research_project(project_id: UUID, data: ProjectResearchIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
-    summary, sources, model = project_web_research(project.name, project.objective, data.query)
+    summary, sources, model = project_web_research(project.name, project.objective, data.query, active_research_domains(user, session))
     if not settings.openai_api_key:
         raise HTTPException(409, summary)
     existing_urls = {item.url for item in project.evidence_items if item.url}
@@ -973,6 +1035,10 @@ def creative_plan_output(plan: CreativeProductionPlan) -> CreativeProductionPlan
     return CreativeProductionPlanOut(id=plan.id, project_id=plan.project_id, concept_id=plan.concept_id, content=json.loads(plan.content_json), status=plan.status, model_used=plan.model_used, created_at=plan.created_at, updated_at=plan.updated_at)
 
 
+def creative_note_output(note: CreativeNote) -> CreativeNoteOut:
+    return CreativeNoteOut.model_validate(note)
+
+
 @app.get("/api/projects/{project_id}/creative-plans", response_model=list[CreativeProductionPlanOut])
 def list_creative_plans(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
@@ -1018,6 +1084,77 @@ def update_creative_plan(project_id: UUID, plan_id: UUID, data: CreativeProducti
     return creative_plan_output(plan)
 
 
+@app.get("/api/projects/{project_id}/creative-notes", response_model=list[CreativeNoteOut])
+def list_creative_notes(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    notes = session.exec(select(CreativeNote).where(CreativeNote.project_id == project_id, CreativeNote.owner_id == user.id).order_by(CreativeNote.updated_at.desc())).all()
+    return [creative_note_output(note) for note in notes]
+
+
+@app.post("/api/projects/{project_id}/creative-notes", response_model=CreativeNoteOut, status_code=201)
+def create_creative_note(project_id: UUID, data: CreativeNoteIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    selected = session.exec(select(CreativeConcept).where(CreativeConcept.project_id == project.id, CreativeConcept.owner_id == user.id, CreativeConcept.status == "selected").order_by(CreativeConcept.updated_at.desc())).first()
+    note = CreativeNote(project_id=project.id, concept_id=selected.id if selected else None, owner_id=user.id, kind=data.kind, author=data.author.strip(), content=data.content.strip())
+    project.updated_at = now(); session.add(note); session.add(project); session.commit(); session.refresh(note)
+    return creative_note_output(note)
+
+
+@app.patch("/api/projects/{project_id}/creative-notes/{note_id}", response_model=CreativeNoteOut)
+def update_creative_note(project_id: UUID, note_id: UUID, data: CreativeNoteUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    note = session.get(CreativeNote, note_id)
+    if not note or note.project_id != project_id or note.owner_id != user.id:
+        raise HTTPException(404, "Aporte creativo no encontrado")
+    note.status = data.status; note.updated_at = now(); session.add(note); session.commit(); session.refresh(note)
+    return creative_note_output(note)
+
+
+@app.get("/api/projects/{project_id}/creative-table", response_model=list[AgentRunOut])
+def list_creative_table_runs(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    runs = session.exec(select(AgentRun).where(AgentRun.project_id == project_id, AgentRun.owner_id == user.id, AgentRun.agent_key == "creative_table").order_by(AgentRun.created_at.desc())).all()
+    return [agent_run_output(run) for run in runs]
+
+
+@app.post("/api/projects/{project_id}/creative-table", response_model=AgentRunOut, status_code=201)
+def run_creative_table(project_id: UUID, data: CreativeTableIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    dossier, decision = approved_creative_context(project, user, session)
+    concept = session.exec(select(CreativeConcept).where(CreativeConcept.project_id == project.id, CreativeConcept.owner_id == user.id, CreativeConcept.status == "selected").order_by(CreativeConcept.updated_at.desc())).first()
+    if not concept:
+        raise HTTPException(409, "Elegí una plataforma creativa antes de convocar la Mesa OLIVA")
+    plan = session.exec(select(CreativeProductionPlan).where(CreativeProductionPlan.concept_id == concept.id, CreativeProductionPlan.owner_id == user.id)).first()
+    stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
+    brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective}
+    output, model = creative_table(project.name, brief, {"route_key": decision.route_key, "rationale": decision.rationale, "launch_plan": decision.launch_plan}, json.loads(concept.content_json), json.loads(plan.content_json) if plan else {}, data.question.strip())
+    run = AgentRun(project_id=project.id, owner_id=user.id, agent_key="creative_table", instruction=data.question.strip(), output_json=json.dumps(output, ensure_ascii=False), status="draft", model_used=model)
+    project.updated_at = now(); session.add(run); session.add(project); session.commit(); session.refresh(run)
+    return agent_run_output(run)
+
+
+@app.get("/api/projects/{project_id}/creative-plans/{plan_id}/production-package", response_model=ProductionPackageOut)
+def production_package(project_id: UUID, plan_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    plan = session.get(CreativeProductionPlan, plan_id)
+    if not plan or plan.project_id != project.id or plan.owner_id != user.id:
+        raise HTTPException(404, "Plan de campaña no encontrado")
+    if plan.status != "approved":
+        raise HTTPException(409, "Aprobá el plan de campaña antes de emitir el paquete de producción")
+    content = json.loads(plan.content_json); base = content.get("base_aprobada", {}) if isinstance(content, dict) else {}
+    assets = session.exec(select(BrandAsset).where(BrandAsset.client_id == project.client_id, BrandAsset.owner_id == user.id).order_by(BrandAsset.created_at.desc())).all()
+    deliverables = []
+    for item in content.get("propuestas_de_produccion", []) if isinstance(content, dict) else []:
+        if isinstance(item, dict):
+            deliverables.append({"pieza": str(item.get("pieza", "Pieza")), "formato": str(item.get("duracion_formato") or item.get("medio") or "Por definir"), "objetivo": str(item.get("objetivo", "")), "guion": str(item.get("guion", "")), "produccion": str(item.get("produccion", ""))})
+    return ProductionPackageOut(
+        campaign=str(base.get("plataforma", "Campaña aprobada")), status="listo para coordinación", strategy=str(base.get("idea_central", "")), deliverables=deliverables,
+        assets=[f"{asset.label}: {asset.filename}" for asset in assets] or ["Logo, packaging y paleta final: pendientes de carga o confirmación."],
+        confirmations=[str(value) for value in content.get("faltantes_de_produccion", [])] or ["Confirmar responsables, materiales finales, derechos y disponibilidad antes de producir."],
+        handoff=["Asignar responsable y fecha a cada pieza.", "Usar el guion editable como base; los cambios no recalculan la estrategia.", "Subir cada material terminado para revisión contra estrategia, marca y propiedad.", "Registrar resultados y aprobación humana al cierre para convertirlos en aprendizaje."],
+    )
+
+
 def creative_visual_output(draft: CreativeVisualDraft) -> CreativeVisualOut:
     return CreativeVisualOut(id=draft.id, project_id=draft.project_id, plan_id=draft.plan_id, title=draft.title, prompt=draft.prompt, status=draft.status, model_used=draft.model_used, created_at=draft.created_at)
 
@@ -1056,7 +1193,7 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
     prompt = (
         "Create one high-end advertising concept board, not finished artwork and no readable text. "
         f"Campaign: {base.get('plataforma', 'approved creative platform')}. Idea: {base.get('idea_central', '')}. "
-        f"Territory: {base.get('territorio', '')}. Focus: {data.focus or 'show the most important campaign execution'}. "
+        f"Territory: {base.get('territorio', '')}. Format: {data.format}. Focus: {data.focus or 'show the most important campaign execution'}. Visual direction: {data.visual_style or 'derive from the approved platform and brand palette'}. "
         f"Use OLIVA Publicidad presentation language: editorial grid, warm paper background, deep forest green and acid lime accents, precise black marker annotations, sophisticated Latin American agency pitch aesthetic. Palette: {palette}. "
         "Show a clear empty area for the real client logo to be overlaid later; never invent logos, words, labels, packaging names, prices or claims. Avoid generic stock advertising, clichés and watermarks."
     )

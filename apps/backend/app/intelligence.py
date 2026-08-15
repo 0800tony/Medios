@@ -15,6 +15,7 @@ SCORE_KEYS=["estrategia","verdad_humana","rol_de_marca","apropiabilidad","origin
 
 AGENT_PROMPT="""Sos un agente especializado de OLIVA Intelligence. Trabajá con trazabilidad: separá hechos, inferencias, hipótesis y faltantes. No inventes resultados, antecedentes ni fuentes. La salida debe ser JSON válido, accionable y apto para aprobación humana. Si recibís lentes de referencia OLIVA, usalos como criterios de evaluación y no como estilos a imitar ni como atribución de ideas a personas."""
 CREATIVE_DIRECTION_PROMPT="""Sos OLIVA Creative Director. Trabajá exclusivamente sobre la estrategia y ruta aprobadas. Antes de proponer, controlá estrategia, marca y propiedad: si la idea serviría igual para cualquier marca, marcala débil y reformulala. Usá los lentes de referencia OLIVA como criterios, nunca como una imitación de una persona ni atribución de autoría. Devolvé JSON con desafio_creativo, efecto_buscado, base_aprobada, territorios (exactamente 3), recomendacion y sistema_creativo. Cada territorio debe incluir id, nombre, tension, idea_central, rol_de_marca, tipo_de_campana, estilo, tono, medios, propiedad, riesgos_y_cliches y control. No escribas piezas finales ni inventes evidencia."""
+CREATIVE_TABLE_PROMPT="""Sos la Mesa Creativa OLIVA. Trabajás sobre una estrategia, una plataforma elegida y un plan ya existentes. No reescribas la estrategia, no inventes información y no imites a personas reales. Con los lentes OLIVA como criterios, devolvé JSON con intervenciones (exactamente cuatro objetos: rol, acuerdo, objecion, aporte_concreto, prueba_de_propiedad) para Estrategia, Dirección Creativa, Dirección de Arte y Producción; y un cierre con mantener, cambiar, probar y no_hacer. La pregunta del equipo puede abrir una alternativa, pero nunca elimina ni recalcula el trabajo aprobado."""
 
 
 def model_for_agent(settings, agent_key: str) -> str:
@@ -39,7 +40,7 @@ def sources_from_response(body:dict)->list[dict[str,str]]:
                     seen.add(url);sources.append({"title":source.get("title") or url,"url":url})
     return sources
 
-def project_web_research(project_name:str, objective:str, query:str)->tuple[str,list[dict[str,str]],str]:
+def project_web_research(project_name:str, objective:str, query:str, domains:list[str] | None = None)->tuple[str,list[dict[str,str]],str]:
     s=get_settings()
     if not s.openai_api_key:
         return "La búsqueda web se habilita al configurar OPENAI_API_KEY. Mientras tanto podés agregar enlaces manualmente.",[],"modo local"
@@ -50,11 +51,12 @@ def project_web_research(project_name:str, objective:str, query:str)->tuple[str,
         "No inventes cifras. Devolvé una síntesis concisa con hallazgos, contradicciones y datos que aún deban validarse. "
         f"Proyecto: {project_name}. Objetivo: {objective}. Foco solicitado: {query}."
     )
+    allowed_domains = list(dict.fromkeys(domain.strip().lower() for domain in (domains or MARKET_RESEARCH_DOMAINS) if domain and domain.strip()))[:90] or MARKET_RESEARCH_DOMAINS
     try:
         body=responses_payload({
             "model":s.openai_search_model,
             "reasoning":{"effort":"low"},
-            "tools":[{"type":"web_search","search_context_size":"high","filters":{"allowed_domains":MARKET_RESEARCH_DOMAINS}}],
+            "tools":[{"type":"web_search","search_context_size":"high","filters":{"allowed_domains":allowed_domains}}],
             "tool_choice":"required",
             "include":["web_search_call.action.sources"],
             "input":prompt,
@@ -140,6 +142,30 @@ def generate_creative_concepts(project_name: str, brief: dict, strategy: dict, d
         return data if isinstance(data.get("territorios"), list) and len(data["territorios"]) == 3 else local, model
     except Exception:
         return local, "OLIVA Creative Director — guía local (API no disponible)"
+
+
+def creative_table(project_name: str, brief: dict, decision: dict, board: dict, plan: dict, question: str) -> tuple[dict, str]:
+    base = board.get("base_aprobada", {}) if isinstance(board, dict) else {}
+    local = {
+        "pregunta": question,
+        "intervenciones": [
+            {"rol": "Estrategia", "acuerdo": f"La conversación debe conservar la ruta {decision.get('route_key', 'aprobada')}.", "objecion": "No usar una ocurrencia creativa para prometer algo que el brief no sostiene.", "aporte_concreto": "Definir qué comportamiento cambia esta propuesta y qué señal lo comprobaría.", "prueba_de_propiedad": "¿La propuesta depende de una verdad específica de la marca?"},
+            {"rol": "Dirección Creativa", "acuerdo": f"La idea rectora es {base.get('idea_central', 'la plataforma elegida')}.", "objecion": "Descartar cualquier frase o escena que pueda cambiar de marca sin perder sentido.", "aporte_concreto": "Traducir la pregunta del equipo en una escena, giro y remate memorables.", "prueba_de_propiedad": "¿Hay una sola frase y gesto que el público pueda repetir?"},
+            {"rol": "Dirección de Arte", "acuerdo": "El sistema visual debe hacer reconocible la idea antes de explicar el producto.", "objecion": "No usar estética de categoría como reemplazo de concepto.", "aporte_concreto": "Elegir una imagen madre, una regla de encuadre y un código visual persistente.", "prueba_de_propiedad": "¿El mundo visual sigue siendo de la marca sin el logo?"},
+            {"rol": "Producción", "acuerdo": "La ejecución debe ser viable y adaptable desde el inicio.", "objecion": "No confundir ambición con una lista de requerimientos sin función.", "aporte_concreto": "Convertir la idea en una primera pieza piloto con responsable, formato y aprendizaje esperado.", "prueba_de_propiedad": "¿La producción preserva el giro central en cada formato?"},
+        ],
+        "cierre": {"mantener": "La decisión estratégica y la plataforma elegida.", "cambiar": "Solo la ejecución que el equipo considere insuficiente.", "probar": "Una pieza piloto antes de extender la idea a todos los soportes.", "no_hacer": "Recalcular la estrategia por un comentario o una edición creativa."},
+    }
+    s = get_settings()
+    if not s.openai_api_key:
+        return local, "Mesa OLIVA — guía local"
+    payload = {"proyecto": project_name, "brief": brief, "decision": decision, "plataforma": board, "plan": plan, "pregunta_del_equipo": question, "lentes_oliva": creative_reference_context(), "referencia_local": local}
+    try:
+        text, model = responses_text({"model": s.openai_creative_model, "instructions": CREATIVE_TABLE_PROMPT, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        data = json.loads(text or "{}")
+        return data if isinstance(data.get("intervenciones"), list) and len(data["intervenciones"]) >= 3 else local, model
+    except Exception:
+        return local, "Mesa OLIVA — guía local (API no disponible)"
 
 
 def local_campaign_plan(project_name: str, brief: dict, decision: dict, board: dict, territory_id: str) -> dict:

@@ -216,6 +216,22 @@ class LibraryEntry(SQLModel, table=True):
     owner_id: UUID = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=now)
 
+
+class ResearchSource(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("owner_id", "url", name="uq_research_source_owner_url"),)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    name: str
+    url: str
+    domain: str = Field(index=True)
+    country: str = "Global"
+    topic: str = "general"
+    description: str = ""
+    priority: int = Field(default=1, index=True)
+    active: bool = Field(default=True, index=True)
+    is_foundational: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=now)
+
 class CreativeSubmission(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="project.id", index=True)
@@ -279,6 +295,20 @@ class CreativeVisualDraft(SQLModel, table=True):
     status: str = Field(default="draft", index=True)
     model_used: str = "OLIVA Art Director"
     created_at: datetime = Field(default_factory=now)
+
+
+class CreativeNote(SQLModel, table=True):
+    """A human contribution to a campaign. It never triggers regeneration."""
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    concept_id: Optional[UUID] = Field(default=None, foreign_key="creativeconcept.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    kind: str = Field(default="idea", index=True)
+    author: str = "Equipo OLIVA"
+    content: str
+    status: str = Field(default="open", index=True)
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
 
 
 class ClientMemory(SQLModel, table=True):
