@@ -13,6 +13,7 @@ MARKET_RESEARCH_DOMAINS=[
 SCORE_KEYS=["estrategia","verdad_humana","rol_de_marca","apropiabilidad","originalidad","claridad","fertilidad","coherencia","adecuacion_al_medio","viabilidad"]
 
 AGENT_PROMPT="""Sos un agente especializado de OLIVA Intelligence. Trabajá con trazabilidad: separá hechos, inferencias, hipótesis y faltantes. No inventes resultados, antecedentes ni fuentes. La salida debe ser JSON válido, accionable y apto para aprobación humana."""
+CREATIVE_DIRECTION_PROMPT="""Sos OLIVA Creative Director. Trabajá exclusivamente sobre la estrategia y ruta aprobadas. Antes de proponer, controlá estrategia, marca y propiedad: si la idea serviría igual para cualquier marca, marcala débil y reformulala. Devolvé JSON con desafio_creativo, efecto_buscado, base_aprobada, territorios (exactamente 3), recomendacion y sistema_creativo. Cada territorio debe incluir id, nombre, tension, idea_central, rol_de_marca, tipo_de_campana, estilo, tono, medios, propiedad, riesgos_y_cliches y control. No escribas piezas finales ni inventes evidencia."""
 def sources_from_response(body:dict)->list[dict[str,str]]:
     sources=[];seen=set()
     for output in body.get("output",[]):
@@ -91,6 +92,41 @@ def run_agent(agent_key: str, project_name: str, brief: dict, strategy: dict, de
         return data or local, model
     except Exception:
         return local, "OLIVA OS — guía local"
+
+
+def local_creative_concepts(project_name: str, brief: dict, strategy: dict, decision: dict, memory: dict, instruction: str) -> dict:
+    route = decision.get("route_key", "ruta_1").replace("_", " ")
+    basis = decision.get("rationale") or "la decisión estratégica aprobada"
+    product = brief.get("product") or project_name
+    territory = brief.get("territory") or "el territorio prioritario"
+    tone = brief.get("brand_tone") or memory.get("tone") or "cercano, claro y sin exageración"
+    proof = brief.get("proof") or "una prueba concreta que la marca pueda sostener"
+    return {
+        "base_aprobada": {"ruta": route, "fundamento": basis, "plan": decision.get("launch_plan", ""), "supuesto_visible": "Las propuestas son plataformas editables; requieren elección humana antes de producir piezas."},
+        "desafio_creativo": f"Convertir {basis} en una plataforma propia para {product}, que pueda vivir en formatos de campaña sin reducirse a un eslogan.",
+        "efecto_buscado": brief.get("behavior") or "Que el público prioritario considere y pruebe la propuesta en su ocasión real de elección.",
+        "territorios": [
+            {"id": "territorio_1", "nombre": "La ocasión cambia la categoría", "tension": brief.get("motivations") or "La categoría suele aparecer en ocasiones acotadas, aunque la necesidad puede ser cotidiana.", "idea_central": f"Reencuadrar {product} para que deje de pertenecer a una sola ocasión y gane un lugar concreto en el día a día.", "rol_de_marca": "La marca habilita esa nueva ocasión con una propuesta reconocible, no con una promesa genérica.", "tipo_de_campana": "Campaña de reposicionamiento y lanzamiento", "estilo": "Observación cotidiana, contrastes simples y una pregunta que abra la categoría.", "tono": tone, "medios": ["video corto", "radio/local", "punto de venta", "social"], "propiedad": f"Solo funciona si la marca demuestra {proof} y conecta esa prueba con la nueva ocasión.", "riesgos_y_cliches": "No usar nostalgia vacía ni una estética artesanal intercambiable.", "control": "Prometedora: desarrollar una primera ejecución y aplicar la prueba de sustitución de marca."},
+            {"id": "territorio_2", "nombre": "La prueba entra en escena", "tension": "En una góndola o compra rápida, la diferencia debe poder entenderse antes de explicarse.", "idea_central": f"Hacer visible la prueba de {product}: convertir el origen, proceso o producto real en una señal de elección inmediata.", "rol_de_marca": "La marca transforma una credencial verificable en una experiencia de elección.", "tipo_de_campana": "Campaña de prueba y preferencia", "estilo": "Dirección de arte precisa, producto protagonista y demostración sin exceso de adjetivos.", "tono": tone, "medios": ["exhibición", "vía pública de proximidad", "video producto", "material comercial"], "propiedad": f"Depende de una prueba real: {proof}.", "riesgos_y_cliches": "No convertir la calidad en una frase genérica o en food porn sin estrategia.", "control": "Requiere validar que la prueba sea cierta, visible y relevante para el canal."},
+            {"id": "territorio_3", "nombre": "Un ritual hecho acá", "tension": f"La pertenencia puede ser una verdad si se conecta con comportamientos reales de {territory}, no si se limita a nombrar lugares.", "idea_central": f"Encontrar un ritual cotidiano y local donde {product} se vuelva una elección inevitable, sin caricaturizar el territorio.", "rol_de_marca": "La marca participa de un hábito local con códigos propios y una razón concreta para estar ahí.", "tipo_de_campana": "Campaña territorial y de activación", "estilo": "Documental estilizado, voces reales y códigos locales contemporáneos.", "tono": tone, "medios": ["activación", "prensa regional", "radio", "creadores locales"], "propiedad": "La idea necesita una verdad cultural o de distribución demostrable del territorio.", "riesgos_y_cliches": "Evitar folklore decorativo, estereotipos o localismo de postal.", "control": "Exploratoria: elegir solo si se identifica una verdad local verificable."},
+        ],
+        "recomendacion": {"territorio_id": "territorio_1", "por_que": "Es el que mejor traduce la ruta aprobada en una plataforma de campaña amplia y luego permite construir demostraciones y activaciones."},
+        "sistema_creativo": {"idea_rectora": "Se define al elegir y editar una plataforma.", "codigos_verbales": tone, "universo_visual": "Se construye desde el concepto elegido, producto real y códigos de marca disponibles.", "universo_sonoro": "Definir voces, ritmo y elementos de recordación después de elegir el territorio.", "fijos": ["Ruta estratégica aprobada", "prueba real de producto o marca", "restricciones del brief"], "variables": ["Medio", "territorio", "segmento", "momento de compra"], "prohibidos": ["Clichés de categoría", "promesas no demostrables", "estética sin idea"], "nota_del_director": instruction or "Editá cualquiera de las plataformas antes de elegirla; la selección habilita la carga y revisión de materiales."},
+    }
+
+
+def generate_creative_concepts(project_name: str, brief: dict, strategy: dict, decision: dict, memory: dict, instruction: str) -> tuple[dict, str]:
+    local = local_creative_concepts(project_name, brief, strategy, decision, memory, instruction)
+    s = get_settings()
+    if not s.openai_api_key:
+        return local, "OLIVA Creative Director — guía local"
+    payload = {"proyecto": project_name, "brief": brief, "estrategia": strategy, "decision_aprobada": decision, "memoria_cliente": memory, "foco_adicional": instruction, "estructura_de_referencia": local}
+    try:
+        text, model = responses_text({"model": s.openai_model, "instructions": CREATIVE_DIRECTION_PROMPT, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        data = json.loads(text or "{}")
+        return data if isinstance(data.get("territorios"), list) and len(data["territorios"]) == 3 else local, model
+    except Exception:
+        return local, "OLIVA Creative Director — guía local (API no disponible)"
 CREATIVE_PROMPT="""Sos el comité creativo de OLIVA. Evaluá contra la estrategia aprobada y contexto de marca. No premies estética sin estrategia. Aplicá sustitución de logo, cambio de categoría y eliminación de estética. Puntúa 0-5 estrategia, verdad_humana, rol_de_marca, apropiabilidad, originalidad, claridad, fertilidad, coherencia, adecuacion_al_medio, viabilidad. Las primeras críticas son estrategia, coherencia y apropiabilidad. Respondé SOLO JSON: verdict (aprobable/revisar/no_alineada), scores y evaluation concreta."""
 def evaluate_creative(path:Path,content_type:str,name:str,medium:str,rationale:str,strategy:dict,brand_context:str)->dict:
     s=get_settings()

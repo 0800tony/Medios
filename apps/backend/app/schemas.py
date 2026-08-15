@@ -256,6 +256,19 @@ class CreativeOut(BaseModel):
     id: UUID; project_id: UUID; name: str; medium: str; rationale: str; filename: str; content_type: str; size: int; verdict: str; scores: dict[str, int]; evaluation: str; model_used: str; created_at: datetime
 
 
+class CreativeConceptGenerateIn(BaseModel):
+    instruction: str = Field(default="", max_length=6000)
+
+
+class CreativeConceptUpdateIn(BaseModel):
+    content: dict[str, object]
+    status: str = Field(default="draft", pattern="^(draft|selected|rejected)$")
+
+
+class CreativeConceptOut(BaseModel):
+    id: UUID; project_id: UUID; dossier_id: UUID; decision_id: UUID; title: str; content: dict[str, object]; status: str; model_used: str; created_at: datetime; updated_at: datetime
+
+
 class ClientMemoryIn(BaseModel):
     data: dict[str, str]
 

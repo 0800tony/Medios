@@ -227,6 +227,20 @@ class CreativeSubmission(SQLModel, table=True):
     created_at: datetime = Field(default_factory=now)
 
 
+class CreativeConcept(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    dossier_id: UUID = Field(index=True)
+    decision_id: UUID = Field(index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    title: str = "Plataformas creativas"
+    content_json: str = "{}"
+    status: str = Field(default="draft", index=True)
+    model_used: str = "OLIVA Creative Director — guía local"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
 class ClientMemory(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     client_id: UUID = Field(foreign_key="client.id", unique=True, index=True)

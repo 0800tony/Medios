@@ -119,6 +119,12 @@ def test_mvp_flow():
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "ruta_seleccionada"
         approval = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
         assert approval.json()["approval_status"] == "approved"
+        concept = client.post(f"/api/projects/{project_id}/creative-concepts/generate", headers=headers, json={"instruction": "Priorizar activación de bajo presupuesto"})
+        assert concept.status_code == 201
+        assert len(concept.json()["content"]["territorios"]) == 3
+        selected_concept = client.patch(f"/api/projects/{project_id}/creative-concepts/{concept.json()['id']}", headers=headers, json={"content": concept.json()["content"], "status": "selected"})
+        assert selected_concept.status_code == 200
+        assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "concepto_creativo"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
         assert creative.status_code == 201
         assert creative.json()["verdict"] == "revisar"

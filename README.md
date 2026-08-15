@@ -27,6 +27,8 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - contrabrief OLIVA Strategy de 32 apartados, versionado y sujeto a decisión de ruta y aprobación humana;
 - exactamente tres rutas estratégicas diferenciadas y preguntas priorizadas cuando falta información;
 - revisión de propuestas creativas contra la ruta estratégica aprobada, con matriz publicitaria de diez criterios;
+- OLIVA Creative Director entre estrategia y producción: tres plataformas de campaña editables, con tipos de campaña, estilo, medios, controles de marca y prueba de propiedad;
+- selección explícita de una plataforma antes de cargar materiales, para que cada pieza se revise contra un concepto y no contra un diagnóstico genérico;
 - agentes coordinados de briefing, investigación, estrategia, dirección creativa y curaduría de aprendizaje;
 - bandeja de aprobaciones: ningún aprendizaje, diagnóstico o evaluación queda incorporado como verdad sin revisión humana;
 - base metodológica atribuida a autores de OLIVA OS Product Book, usada como criterio de trabajo y no como evidencia del cliente;
@@ -116,6 +118,9 @@ npm run build
 | `GET/PUT` | `/api/projects/{id}/strategy/decision` | Consultar o elegir la ruta que guiará la activación y la evaluación creativa |
 | `PATCH` | `/api/projects/{id}/strategy/approval` | Aprobar o pedir cambios a la estrategia |
 | `GET/POST` | `/api/projects/{id}/creative` | Listar o evaluar propuestas creativas |
+| `GET` | `/api/projects/{id}/creative-concepts` | Consultar plataformas creativas editables |
+| `POST` | `/api/projects/{id}/creative-concepts/generate` | Pedir tres campañas al agente creativo desde la ruta aprobada |
+| `PATCH` | `/api/projects/{id}/creative-concepts/{concept_id}` | Corregir o elegir una plataforma antes de subir materiales |
 | `POST` | `/api/projects/{id}/creative/{creative_id}/learning` | Enviar una evaluación creativa a revisión como aprendizaje |
 | `GET/POST` | `/api/projects/{id}/agents` | Consultar ejecuciones o activar un agente del proyecto |
 | `GET` | `/api/agents` | Consultar los agentes disponibles |

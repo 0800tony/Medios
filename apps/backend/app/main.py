@@ -15,10 +15,10 @@ from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
 from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
-from .models import AgentRun, ApprovalTask, Client, ClientMemory, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
-from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
+from .models import AgentRun, ApprovalTask, Client, ClientMemory, CreativeConcept, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
+from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
-from .intelligence import evaluate_creative, festival_research, project_web_research, run_agent
+from .intelligence import evaluate_creative, festival_research, generate_creative_concepts, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
 
 settings = get_settings()
@@ -555,6 +555,7 @@ def delete_project(project_id: UUID, user: User = Depends(current_user), session
     for record in session.exec(select(LearningRecord).where(LearningRecord.project_id == project.id)).all(): session.delete(record)
     for task in session.exec(select(ApprovalTask).where(ApprovalTask.project_id == project.id)).all(): session.delete(task)
     for run in session.exec(select(AgentRun).where(AgentRun.project_id == project.id)).all(): session.delete(run)
+    for concept in session.exec(select(CreativeConcept).where(CreativeConcept.project_id == project.id)).all(): session.delete(concept)
     for d in session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id)).all():session.delete(d)
     for c in session.exec(select(CreativeSubmission).where(CreativeSubmission.project_id==project.id)).all():
         if c.storage_path:Path(c.storage_path).unlink(missing_ok=True)
@@ -862,21 +863,68 @@ def save_strategy_decision(project_id: UUID, data: StrategyDecisionIn, user: Use
     project.workflow_stage = "ruta_seleccionada"; project.updated_at = now()
     session.add(decision); session.add(dossier); session.add(project); session.commit(); session.refresh(decision)
     return decision
+
+
+def creative_concept_output(concept: CreativeConcept) -> CreativeConceptOut:
+    return CreativeConceptOut(id=concept.id, project_id=concept.project_id, dossier_id=concept.dossier_id, decision_id=concept.decision_id, title=concept.title, content=json.loads(concept.content_json), status=concept.status, model_used=concept.model_used, created_at=concept.created_at, updated_at=concept.updated_at)
+
+
+def approved_creative_context(project: Project, user: User, session: Session) -> tuple[StrategyDossier, StrategyDecision]:
+    dossier = session.exec(select(StrategyDossier).where(StrategyDossier.project_id == project.id).order_by(StrategyDossier.version.desc())).first()
+    decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project.id)).first()
+    if not dossier or dossier.approval_status != "approved" or not decision or decision.dossier_id != dossier.id:
+        raise HTTPException(409, "Primero confirmá una estrategia y su ruta de trabajo antes de pasar a creatividad")
+    return dossier, decision
+
+
+@app.get("/api/projects/{project_id}/creative-concepts", response_model=list[CreativeConceptOut])
+def list_creative_concepts(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    concepts = session.exec(select(CreativeConcept).where(CreativeConcept.project_id == project_id, CreativeConcept.owner_id == user.id).order_by(CreativeConcept.updated_at.desc())).all()
+    return [creative_concept_output(concept) for concept in concepts]
+
+
+@app.post("/api/projects/{project_id}/creative-concepts/generate", response_model=CreativeConceptOut, status_code=201)
+def generate_creative_concept_board(project_id: UUID, data: CreativeConceptGenerateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    dossier, decision = approved_creative_context(project, user, session)
+    stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
+    brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective}
+    memory = session.exec(select(ClientMemory).where(ClientMemory.client_id == project.client_id)).first()
+    content, model = generate_creative_concepts(project.name, brief, json.loads(dossier.content_json), {"route_key": decision.route_key, "rationale": decision.rationale, "launch_plan": decision.launch_plan}, json.loads(memory.data_json) if memory else {}, data.instruction.strip())
+    concept = CreativeConcept(project_id=project.id, dossier_id=dossier.id, decision_id=decision.id, owner_id=user.id, title="Plataformas creativas propuestas", content_json=json.dumps(content, ensure_ascii=False), model_used=model)
+    session.add(concept); session.commit(); session.refresh(concept)
+    return creative_concept_output(concept)
+
+
+@app.patch("/api/projects/{project_id}/creative-concepts/{concept_id}", response_model=CreativeConceptOut)
+def update_creative_concept(project_id: UUID, concept_id: UUID, data: CreativeConceptUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    dossier, decision = approved_creative_context(project, user, session)
+    concept = session.get(CreativeConcept, concept_id)
+    if not concept or concept.project_id != project.id or concept.owner_id != user.id:
+        raise HTTPException(404, "Plataforma creativa no encontrada")
+    concept.content_json = json.dumps(data.content, ensure_ascii=False); concept.status = data.status; concept.dossier_id = dossier.id; concept.decision_id = decision.id; concept.updated_at = now()
+    if data.status == "selected":
+        project.workflow_stage = "concepto_creativo"; project.updated_at = now(); session.add(project)
+    session.add(concept); session.commit(); session.refresh(concept)
+    return creative_concept_output(concept)
+
+
 def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)
 @app.get("/api/projects/{project_id}/creative",response_model=list[CreativeOut])
 def list_creative(project_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
     owned_project(project_id,user,session);return [creative_output(i) for i in session.exec(select(CreativeSubmission).where(CreativeSubmission.project_id==project_id).order_by(CreativeSubmission.created_at.desc())).all()]
 @app.post("/api/projects/{project_id}/creative",response_model=CreativeOut,status_code=201)
 async def review_creative(project_id:UUID,file:UploadFile=File(...),name:str=Form(...,min_length=2,max_length=250),medium:str=Form(default="",max_length=250),rationale:str=Form(default="",max_length=10000),user:User=Depends(current_user),session:Session=Depends(get_session)):
-    p=owned_project(project_id,user,session);d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==p.id).order_by(StrategyDossier.version.desc())).first()
-    if not d or d.approval_status!="approved":raise HTTPException(409,"Primero debe aprobarse la estrategia vigente")
-    decision=session.exec(select(StrategyDecision).where(StrategyDecision.project_id==p.id)).first()
-    if not decision or decision.dossier_id != d.id:raise HTTPException(409,"Elegí la ruta estratégica vigente antes de evaluar una propuesta")
+    p=owned_project(project_id,user,session);d,decision=approved_creative_context(p,user,session)
+    concept=session.exec(select(CreativeConcept).where(CreativeConcept.project_id==p.id,CreativeConcept.owner_id==user.id,CreativeConcept.status=="selected").order_by(CreativeConcept.updated_at.desc())).first()
+    if not concept:raise HTTPException(409,"Primero elegí y guardá una plataforma creativa. Después podés cargar materiales para revisión.")
     ct=file.content_type or "application/octet-stream"
     if ct not in PHOTO_TYPES|{"application/pdf","text/plain","text/markdown"}:raise HTTPException(415,"Usá JPG, PNG, WEBP, PDF o texto")
     raw=await file.read(MAX_SIZE+1)
     if len(raw)>MAX_SIZE:raise HTTPException(413,"La pieza supera 15 MB")
-    filename=safe_name(file.filename or "pieza");item=CreativeSubmission(project_id=p.id,name=name.strip(),medium=medium.strip(),rationale=rationale.strip(),filename=filename,storage_path="",content_type=ct,size=len(raw),owner_id=user.id);path=Path(settings.upload_dir)/"creative"/str(p.id)/f"{item.id}_{filename}";path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);item.storage_path=str(path);client=session.get(Client,p.client_id);strategy_data=json.loads(d.content_json);strategy_data["decision_estrategica"]={"ruta":decision.route_key,"fundamento":decision.rationale,"plan_de_lanzamiento":decision.launch_plan};ev=evaluate_creative(path,ct,item.name,item.medium,item.rationale,strategy_data,f"{client.name if client else ''}: {client.description if client else ''}");item.verdict=ev.get("verdict","pending");item.score_json=json.dumps(ev.get("scores",{}));item.evaluation=ev.get("evaluation","");item.model_used=ev.get("model_used","OLIVA Creative Review");session.add(item);session.flush();create_approval_task(session,user,p.id,"creative_review",str(item.id),f"Revisar propuesta creativa: {item.name}","Validá si la pieza responde a la ruta aprobada antes de convertir su devolución en aprendizaje.");p.workflow_stage="desarrollo_creativo";p.updated_at=now();session.add(p);session.commit();session.refresh(item);return creative_output(item)
+    filename=safe_name(file.filename or "pieza");item=CreativeSubmission(project_id=p.id,name=name.strip(),medium=medium.strip(),rationale=rationale.strip(),filename=filename,storage_path="",content_type=ct,size=len(raw),owner_id=user.id);path=Path(settings.upload_dir)/"creative"/str(p.id)/f"{item.id}_{filename}";path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);item.storage_path=str(path);client=session.get(Client,p.client_id);strategy_data=json.loads(d.content_json);strategy_data["decision_estrategica"]={"ruta":decision.route_key,"fundamento":decision.rationale,"plan_de_lanzamiento":decision.launch_plan};strategy_data["plataforma_creativa_elegida"]=json.loads(concept.content_json);ev=evaluate_creative(path,ct,item.name,item.medium,item.rationale,strategy_data,f"{client.name if client else ''}: {client.description if client else ''}");item.verdict=ev.get("verdict","pending");item.score_json=json.dumps(ev.get("scores",{}));item.evaluation=ev.get("evaluation","");item.model_used=ev.get("model_used","OLIVA Creative Review");session.add(item);session.flush();create_approval_task(session,user,p.id,"creative_review",str(item.id),f"Revisar propuesta creativa: {item.name}","Validá si la pieza responde a la plataforma creativa elegida y la ruta aprobada antes de convertir su devolución en aprendizaje.");p.workflow_stage="desarrollo_creativo";p.updated_at=now();session.add(p);session.commit();session.refresh(item);return creative_output(item)
 @app.get("/api/projects/{project_id}/creative/{creative_id}/media")
 def creative_media(project_id:UUID,creative_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
     owned_project(project_id,user,session);item=session.get(CreativeSubmission,creative_id)
