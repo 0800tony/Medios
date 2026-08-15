@@ -23,13 +23,23 @@ export type Foundation={references:{author:string;work:string;lens:string}[];fes
 export function token() { return typeof window === "undefined" ? "" : localStorage.getItem("oliva_token") || ""; }
 export function logout() { localStorage.removeItem("oliva_token"); localStorage.removeItem("oliva_user"); window.location.href = "/login"; }
 
+function readableError(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map(entry => {
+    const issue = entry as Record<string, unknown>;
+    const location = Array.isArray(issue.loc) && issue.loc.length ? String(issue.loc[issue.loc.length - 1]) : "dato";
+    return `${location}: ${String(issue.msg || "Valor inválido")}`;
+  }).join(" · ");
+  return "Ocurrió un error. Revisá los datos e intentá nuevamente.";
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { ...(init.headers as Record<string,string> || {}) };
   if (!(init.body instanceof FormData)) headers["Content-Type"] = "application/json";
   if (token()) headers.Authorization = `Bearer ${token()}`;
   const response = await fetch(`${API}${path}`, { ...init, headers });
   if (response.status === 401 && typeof window !== "undefined") logout();
-  if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.detail || "Ocurrió un error"); }
+  if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(readableError(data.detail)); }
   if (response.status === 204) return undefined as T;
   return response.json();
 }

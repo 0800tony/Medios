@@ -46,7 +46,7 @@ function StrategicRecommendation({ value }: { value: unknown }) {
   return <section className="card strategic-recommendation"><p className="eyebrow">Recomendación de OLIVA Strategy</p><h2>{decision.recomendacion_estrategica}</h2><p>{decision.por_que_ahora}</p><dl className="structured"><div><dt>Primer movimiento</dt><dd><p>{decision.primer_movimiento}</p></dd></div><div><dt>No hacer todavía</dt><dd><p>{decision.no_hacer_aun}</p></dd></div></dl><p className="muted smallprint">Recomendación de trabajo basada en la evidencia disponible y aproximaciones explícitas. Se revisa con el aprendizaje del lanzamiento.</p></section>;
 }
 
-function RouteDecision({ dossier, decision, busy, onSave }: { dossier: Dossier; decision: StrategyDecision | null; busy: boolean; onSave: (routeKey: string, rationale: string, launchPlan: string) => Promise<void> }) {
+function RouteDecision({ dossier, decision, busy, savedMessage, onSave }: { dossier: Dossier; decision: StrategyDecision | null; busy: boolean; savedMessage: string; onSave: (routeKey: string, rationale: string, launchPlan: string) => Promise<void> }) {
   const [routeKey, setRouteKey] = useState(decision?.route_key || "ruta_1");
   const [rationale, setRationale] = useState(decision?.rationale || "");
   const [launchPlan, setLaunchPlan] = useState(decision?.launch_plan || "");
@@ -58,7 +58,7 @@ function RouteDecision({ dossier, decision, busy, onSave }: { dossier: Dossier; 
       {route && <div className="route-preview"><strong>{String(route.nombre || routeKey)}</strong><p>{String(route.hipotesis || route.condicion_para_elegirla || "")}</p></div>}
       <div className="field"><label>Por qué elegimos esta ruta</label><textarea value={rationale} onChange={event => setRationale(event.target.value)} required minLength={12} placeholder="Qué problema resuelve primero y por qué es la prioridad."/></div>
       <div className="field"><label>Primer plan de activación</label><textarea value={launchPlan} onChange={event => setLaunchPlan(event.target.value)} required minLength={12} placeholder="Qué haremos, dónde, con quién y qué vamos a aprender."/></div>
-      <button className="btn lime" disabled={busy}>{busy ? "Guardando…" : decision ? "Actualizar ruta de trabajo" : "Guardar ruta de trabajo"}</button>
+      <div className="route-save-row"><button className="btn lime" disabled={busy}>{busy ? "Guardando ruta…" : decision ? "Actualizar ruta de trabajo" : "Guardar ruta de trabajo"}</button>{savedMessage && <p className="success" role="status">{savedMessage}</p>}</div>
     </form>
   </section>;
 }
@@ -70,6 +70,7 @@ export default function ResultPage({ params }: { params: { id: string } }) {
   const [missingStrategy, setMissingStrategy] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [decisionSaved, setDecisionSaved] = useState("");
 
   async function load() {
     setError(""); setMissingStrategy(false);
@@ -82,7 +83,14 @@ export default function ResultPage({ params }: { params: { id: string } }) {
 
   async function generate() { setBusy(true); setError(""); try { await request(`/api/projects/${params.id}/analyze`, { method: "POST" }); await load(); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
   async function approve(status: string) { setBusy(true); try { setDossier(await request<Dossier>(`/api/projects/${params.id}/strategy/approval`, { method: "PATCH", body: JSON.stringify({ status, notes: "" }) })); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
-  async function saveDecision(routeKey: string, rationale: string, launchPlan: string) { setBusy(true); setError(""); try { setDecision(await request<StrategyDecision>(`/api/projects/${params.id}/strategy/decision`, { method: "PUT", body: JSON.stringify({ route_key: routeKey, rationale, launch_plan: launchPlan }) })); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
+  async function saveDecision(routeKey: string, rationale: string, launchPlan: string) {
+    setBusy(true); setError(""); setDecisionSaved("");
+    try {
+      const saved = await request<StrategyDecision>(`/api/projects/${params.id}/strategy/decision`, { method: "PUT", body: JSON.stringify({ route_key: routeKey, rationale, launch_plan: launchPlan }) });
+      setDecision(saved);
+      setDecisionSaved(`Ruta guardada a las ${new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit" }).format(new Date())}. Ya podés aprobar esta versión o seguir editándola.`);
+    } catch (error) { setError(`No se pudo guardar la ruta: ${(error as Error).message}`); } finally { setBusy(false); }
+  }
   async function download() { setBusy(true); try { saveBlob(await requestBlob(`/api/projects/${params.id}/report`), `estrategia-${project?.name || "oliva"}.md`); } catch (error) { setError((error as Error).message); } finally { setBusy(false); } }
 
   if (!project) return <main className="shell"><Nav/><p>{error || "Cargando proyecto…"}</p></main>;
@@ -93,7 +101,7 @@ export default function ResultPage({ params }: { params: { id: string } }) {
     <div className="pagehead"><div><p className="eyebrow">Contrabrief · Versión {dossier.version}</p><h1>{project.name}</h1><div className="strategy-status"><span className="status">{dossier.approval_status.replace("_", " ")}</span><small>{dossier.model_used}</small></div></div><div className="page-actions"><button className="btn lime" onClick={download}>Descargar</button><Link className="btn ghost" href={`/projects/${project.id}/brief`}>Editar brief</Link><Link className="btn ghost" href={`/projects/${project.id}`}>← Evidencia</Link></div></div>
     <section className="approval-bar"><div><strong>Aprobación humana</strong><p>Podés aprobar esta versión de trabajo y avanzar. Los vacíos críticos quedan visibles como riesgos a validar, no como un bloqueo.</p></div><div className="inline-actions"><button className="btn lime" disabled={busy || !decision} onClick={() => approve("approved")}>{decision ? "Aprobar versión de trabajo" : "Elegí una ruta para aprobar"}</button><button className="btn ghost" disabled={busy} onClick={() => approve("changes")}>Pedir cambios</button>{dossier.approval_status === "approved" && <Link className="btn" href={`/projects/${project.id}/creative`}>Revisar propuestas →</Link>}</div></section>
     <StrategicRecommendation value={dossier.sections.proxima_decision}/>
-    <RouteDecision dossier={dossier} decision={decision} busy={busy} onSave={saveDecision}/>
+    <RouteDecision dossier={dossier} decision={decision} busy={busy} savedMessage={decisionSaved} onSave={saveDecision}/>
     <CriticalGapActions value={dossier.sections.que_no_sabemos} projectId={project.id}/>
     {error && <p className="error">{error}</p>}<section className="dossier">{order.map((key, index) => <article className={`card dossier-section ${["resumen_ejecutivo", "que_no_sabemos", "diagnostico_del_problema", "insight", "oportunidad_estrategica", "comparacion_de_rutas", "proxima_decision"].includes(key) ? "featured" : ""}`} key={key}><p className="section-number">{String(index + 1).padStart(2, "0")}</p><h2>{key === "que_no_sabemos" ? "Vacíos críticos: qué falta y cómo resolverlo" : key.replaceAll("_", " ")}</h2>{key === "que_no_sabemos" ? <CriticalGaps value={dossier.sections[key]} projectId={project.id}/> : <Content value={dossier.sections[key]}/>}</article>)}</section>
   </main>;
