@@ -25,12 +25,15 @@ def embed_text(text: str) -> list[float] | None:
     settings = get_settings()
     if not settings.openai_api_key or not text.strip():
         return None
-    response = OpenAI(api_key=settings.openai_api_key).embeddings.create(
-        model=settings.openai_embedding_model,
-        input=text[:24000].replace("\n", " "),
-        dimensions=256,
-    )
-    return response.data[0].embedding
+    try:
+        response = OpenAI(api_key=settings.openai_api_key).embeddings.create(
+            model=settings.openai_embedding_model,
+            input=text[:24000].replace("\n", " "),
+            dimensions=256,
+        )
+        return response.data[0].embedding
+    except Exception:
+        return None
 
 
 def cosine_similarity(left: list[float], right: list[float]) -> float:
@@ -77,21 +80,29 @@ def analyze_photo(data: bytes, content_type: str, title: str, notes: str) -> dic
             "index_status": "indexed",
         }
 
-    encoded = base64.b64encode(data).decode("ascii")
-    client = OpenAI(api_key=settings.openai_api_key)
-    response = client.responses.create(
-        model=settings.openai_vision_model,
-        reasoning={"effort": "none"},
-        input=[{"role": "user", "content": [
-            {"type": "input_text", "text": f"Analizá esta foto para una biblioteca de inteligencia estratégica. Título: {title}. Contexto aportado: {notes or 'sin contexto'}. Respondé JSON con summary (descripción objetiva y texto visible relevante) y observations (patrones de diseño, comportamiento, tendencias o aprendizajes potenciales; indicá incertidumbre)."},
-            {"type": "input_image", "image_url": f"data:{content_type};base64,{encoded}", "detail": "high"},
-        ]}],
-    )
-    raw = response.output_text.strip()
-    if raw.startswith("```"):
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
-    parsed = json.loads(raw)
-    return {"ai_summary": parsed.get("summary", ""), "ai_observations": parsed.get("observations", ""), "index_status": "indexed"}
+    try:
+        encoded = base64.b64encode(data).decode("ascii")
+        client = OpenAI(api_key=settings.openai_api_key)
+        response = client.responses.create(
+            model=settings.openai_vision_model,
+            reasoning={"effort": "none"},
+            input=[{"role": "user", "content": [
+                {"type": "input_text", "text": f"Analizá esta foto para una biblioteca de inteligencia estratégica. Título: {title}. Contexto aportado: {notes or 'sin contexto'}. Respondé JSON con summary (descripción objetiva y texto visible relevante) y observations (patrones de diseño, comportamiento, tendencias o aprendizajes potenciales; indicá incertidumbre)."},
+                {"type": "input_image", "image_url": f"data:{content_type};base64,{encoded}", "detail": "high"},
+            ]}],
+        )
+        raw = response.output_text.strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
+        parsed = json.loads(raw)
+        return {"ai_summary": parsed.get("summary", ""), "ai_observations": parsed.get("observations", ""), "index_status": "indexed"}
+    except Exception:
+        summary = notes.strip() or f"Foto incorporada al Radar con el título “{title}”."
+        return {
+            "ai_summary": summary,
+            "ai_observations": "Indexada con el contexto aportado. El análisis visual con IA está pendiente porque la API no está disponible en este momento.",
+            "index_status": "indexed",
+        }
 
 
 def radar_context(items: list[KnowledgeItem]) -> str:

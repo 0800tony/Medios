@@ -38,21 +38,27 @@ def project_web_research(project_name:str, objective:str, query:str)->tuple[str,
         "No inventes cifras. Devolvé una síntesis concisa con hallazgos, contradicciones y datos que aún deban validarse. "
         f"Proyecto: {project_name}. Objetivo: {objective}. Foco solicitado: {query}."
     )
-    body=responses_payload({
-        "model":s.openai_search_model,
-        "reasoning":{"effort":"low"},
-        "tools":[{"type":"web_search","search_context_size":"high","filters":{"allowed_domains":MARKET_RESEARCH_DOMAINS}}],
-        "tool_choice":"required",
-        "include":["web_search_call.action.sources"],
-        "input":prompt,
-    })
-    return response_text(body),sources_from_response(body),body.get("model",s.openai_search_model)
+    try:
+        body=responses_payload({
+            "model":s.openai_search_model,
+            "reasoning":{"effort":"low"},
+            "tools":[{"type":"web_search","search_context_size":"high","filters":{"allowed_domains":MARKET_RESEARCH_DOMAINS}}],
+            "tool_choice":"required",
+            "include":["web_search_call.action.sources"],
+            "input":prompt,
+        })
+        return response_text(body),sources_from_response(body),body.get("model",s.openai_search_model)
+    except Exception:
+        return "La IA web no está disponible en este momento. Podés continuar cargando enlaces y evidencia; OLIVA los integrará cuando la cuota de API esté habilitada.",[],"modo local · API no disponible"
 
 def festival_research(query:str)->tuple[str,list[dict[str,str]],str]:
     s=get_settings()
     if not s.openai_api_key:return "La búsqueda automática requiere configurar OPENAI_API_KEY. Podés guardar enlaces manualmente.",[],"modo local"
-    b=responses_payload({"model":s.openai_search_model,"tools":[{"type":"web_search","filters":{"allowed_domains":FESTIVAL_DOMAINS},"search_context_size":"high"}],"tool_choice":"required","include":["web_search_call.action.sources"],"input":f"Buscá casos premiados o finalistas relevantes para: {query}. Consultá solo archivos oficiales de Effie, Cannes Lions, D&AD, The One Show, Clio, FIAP, El Ojo de Iberoamérica, El Sol, SXSW y Desachate/Círculo Uruguayo. Para cada hallazgo distinguí claramente premio, año, categoría, resultado reportado y aprendizaje transferible. No inventes datos ni atribuyas resultados no publicados. Citá las fuentes."})
-    return response_text(b),sources_from_response(b),b.get("model",s.openai_search_model)
+    try:
+        b=responses_payload({"model":s.openai_search_model,"tools":[{"type":"web_search","filters":{"allowed_domains":FESTIVAL_DOMAINS},"search_context_size":"high"}],"tool_choice":"required","include":["web_search_call.action.sources"],"input":f"Buscá casos premiados o finalistas relevantes para: {query}. Consultá solo archivos oficiales de Effie, Cannes Lions, D&AD, The One Show, Clio, FIAP, El Ojo de Iberoamérica, El Sol, SXSW y Desachate/Círculo Uruguayo. Para cada hallazgo distinguí claramente premio, año, categoría, resultado reportado y aprendizaje transferible. No inventes datos ni atribuyas resultados no publicados. Citá las fuentes."})
+        return response_text(b),sources_from_response(b),b.get("model",s.openai_search_model)
+    except Exception:
+        return "La búsqueda automática de festivales no está disponible temporalmente. El catálogo oficial permanece disponible y podés incorporar enlaces manuales.",[],"modo local · API no disponible"
 
 
 def local_agent_output(agent_key: str, project_name: str, brief: dict, strategy: dict, decision: dict, memory: dict, learning: list[dict], instruction: str) -> dict:
