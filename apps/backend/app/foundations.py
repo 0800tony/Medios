@@ -37,13 +37,16 @@ AGENT_CATALOG = [
 ]
 
 # Referencias declaradas por OLIVA. Son lentes de trabajo, no imitaciones de personas
-# ni garantía de que una idea provenga de un autor específico.
+# ni garantía de que una idea provenga de un autor específico. Los casos, marcas o
+# prácticas concretas se incorporan a la Biblioteca únicamente con su fuente.
 CREATIVE_REFERENCE_LENSES = [
-    {"names": "Ramiro Agulla, Carlos Baccetti, Martín Mercado, Chacho Puebla, Leandro Raposo, Joaquín Cubría, Fernando Vega Olmos, Diego Medvedocky, Hernán Ponce", "lens": "observación cultural, idea simple y recordable, giro publicitario y construcción de campañas populares sin subestimar a la audiencia"},
-    {"names": "David Droga, Susan Credle, Debbi Vandeven, Anselmo Ramos, Pancho Cassis, Juan Cabral, Ricardo Silvestre, Fernando Machado", "lens": "ideas con punto de vista, craft subordinado al concepto, valentía relevante y sistemas de campaña que viven en medios distintos"},
-    {"names": "David Ogilvy, Rory Sutherland, Martin Lindstrom, Paco Underhill, Mark Ritson, Richard Shotton, Gerald Zaltman, Douglas Holt, Annie Pettit", "lens": "distintividad de marca, comportamiento real, contexto de compra, cultura, memoria y eficacia antes que adjetivos"},
-    {"names": "Michael Porter, Philip Kotler, Al Ries, Byron Sharp, Solomon, Graves", "lens": "elección competitiva, posicionamiento, disponibilidad mental y física, segmentación útil y disciplina comercial"},
-    {"names": "Claudio Invernizzi, Nacho Vallejo, Esteban Barreiro, Mario Taglioretti, Mauricio Minchilli, Gabriel Román, Diego Lev, Martín Carrier, Dominique Sarries, Emir Cámara, Álvaro Moré, Carina Silva, Chelo Waintraub, Bruno Petcho, Marco Caltieri, Leonel Delfino, Toto Barrera, Bicho Orlando, Gabriel Lista, Diego Lazcano, Gonzalo López Baliñas, Rafael Bartaburu Trujillo", "lens": "lectura local, oficio uruguayo, cercanía cultural, realidad de medios y producción regional"},
+    {"group": "Marca, identidad y sistemas", "names": "Joan Costa, David Ogilvy, Bill Bernbach, Leo Burnett, Albert Lasker, Carlos Bayala, Carlos Vázquez (Argentina), Nick Law", "lens": "claridad de identidad, códigos distintivos, una idea con carácter, construcción de sistemas de marca y disciplina de comunicación"},
+    {"group": "Estrategia, negocio y crecimiento", "names": "Michael Porter, Philip Kotler, Al Ries, Byron Sharp, Mark Ritson, Seth Godin, Guy Kawasaki, Martin Sorrell, Keith Weed, Aline Santos", "lens": "elección competitiva, posicionamiento, disponibilidad mental y física, foco comercial, plataformas de crecimiento y consistencia de largo plazo"},
+    {"group": "Personas, comportamiento y cultura", "names": "Rory Sutherland, Martin Lindstrom, Paco Underhill, Richard Shotton, Michael R. Solomon, Gerald Zaltman, Douglas Holt, Annie Pettit, Graves", "lens": "comportamiento real, contexto de compra, cultura, memoria, investigación cualitativa y eficacia antes que adjetivos"},
+    {"group": "Creatividad global y craft", "names": "David Droga, Susan Credle, Debbi Vandeven, Anselmo Ramos, Pancho Cassis, Juan Cabral, Ricardo Silvestre, Fernando Machado, Sergio Gordilho", "lens": "ideas con punto de vista, craft subordinado al concepto, valentía relevante y sistemas de campaña que viven en medios distintos"},
+    {"group": "Creatividad latina", "names": "Ramiro Agulla, Carlos Baccetti, Martín Mercado, Chacho Puebla, Leandro Raposo, Joaquín Cubría, Fernando Vega Olmos, Diego Medvedocky, Hernán Ponce", "lens": "observación cultural, idea simple y recordable, giro publicitario y campañas populares que no subestiman a la audiencia"},
+    {"group": "Marca, innovación y experiencia", "names": "Gastón Bigio, Camilo Plazas, Rafael Bartholomeu, Juan Isaza, Patricio Caso, Jorge Esquer, Mariana Le Mollé, Esteban Velasco, Rosalina Tornel, Felipe Ambra, Eduardo Angulo, Sergio De Anda, Ana Belén Fernández", "lens": "integración entre marca, producto, experiencia, cultura y negocio; una idea debe poder traducirse en decisiones y no sólo en piezas"},
+    {"group": "Uruguay y realidad regional", "names": "Claudio Invernizzi, Nacho Vallejo, Esteban Barreiro, Mario Taglioretti, Mauricio Minchilli, Gabriel Román, Diego Lev, Martín Carrier, Dominique Sarries, Emir Cámara, Álvaro Moré, Carina Silva, Chelo Waintraub, Bruno Petcho, Marco Caltieri, Leonel Delfino, Toto Barrera, Bicho Orlando, Gabriel Lista, Diego Lazcano, Gonzalo López Baliñas, Rafael Bartaburu Trujillo", "lens": "lectura local, oficio uruguayo, cercanía cultural, realidad de medios, clientes y producción regional"},
 ]
 
 

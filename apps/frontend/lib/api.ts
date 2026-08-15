@@ -24,7 +24,7 @@ export type LearningRecord={id:string;project_id:string|null;client_id:string|nu
 export type ApprovalTask={id:string;project_id:string|null;kind:string;entity_id:string;title:string;summary:string;status:string;notes:string;created_at:string;resolved_at:string|null};
 export type AgentDefinition={key:string;name:string;stage:string;description:string};
 export type AgentRun={id:string;project_id:string;agent_key:string;instruction:string;output:Record<string,unknown>;status:string;model_used:string;created_at:string};
-export type Foundation={references:{author:string;work:string;lens:string}[];festivals:{id:string;name:string;url:string;focus:string}[];principle:string};
+export type Foundation={references:{author:string;work:string;lens:string}[];creative_lenses:{group:string;names:string;lens:string}[];festivals:{id:string;name:string;url:string;focus:string}[];principle:string};
 
 export function token() { return typeof window === "undefined" ? "" : localStorage.getItem("oliva_token") || ""; }
 export function logout() { localStorage.removeItem("oliva_token"); localStorage.removeItem("oliva_user"); window.location.href = "/login"; }

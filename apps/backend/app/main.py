@@ -20,7 +20,7 @@ from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, Cr
 from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
 from .intelligence import evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
-from .foundations import AGENT_CATALOG, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
+from .foundations import AGENT_CATALOG, CREATIVE_REFERENCE_LENSES, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
 
 settings = get_settings()
 
@@ -395,7 +395,12 @@ def delete_library(item_id:UUID,user:User=Depends(current_user),session:Session=
 
 @app.get("/api/foundations")
 def foundations(user: User = Depends(current_user)):
-    return {"references": FOUNDATIONAL_REFERENCES, "festivals": FESTIVAL_CATALOG, "principle": "Las referencias metodológicas orientan el criterio. No se presentan como evidencia de un cliente ni sustituyen investigación situada."}
+    return {
+        "references": FOUNDATIONAL_REFERENCES,
+        "creative_lenses": CREATIVE_REFERENCE_LENSES,
+        "festivals": FESTIVAL_CATALOG,
+        "principle": "Las referencias metodológicas y creativas orientan el criterio. No se presentan como evidencia de un cliente, no imitan estilos personales ni sustituyen investigación situada.",
+    }
 
 
 @app.get("/api/library/festivals/catalog")

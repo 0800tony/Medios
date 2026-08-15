@@ -229,6 +229,10 @@ def test_memory_learning_agents_and_approvals():
         assert foundations.status_code == 200
         assert any(item["author"] == "Donella Meadows" for item in foundations.json()["references"])
         assert any(item["id"] == "desachate" for item in foundations.json()["festivals"])
+        lenses = foundations.json()["creative_lenses"]
+        assert any("Joan Costa" in item["names"] for item in lenses)
+        assert any("Gastón Bigio" in item["names"] for item in lenses)
+        assert any("Claudio Invernizzi" in item["names"] for item in lenses)
         run = client.post(f"/api/projects/{project_id}/agents/run", headers=headers, json={"agent_key": "briefing", "instruction": "Ordenar el pedido"})
         assert run.status_code == 201
         assert run.json()["output"]["tipo"] == "normalización"
