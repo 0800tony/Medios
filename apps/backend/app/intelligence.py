@@ -3,6 +3,7 @@ from pathlib import Path
 from .config import get_settings
 from .documents import extract_text
 from .strategy import response_text,responses_payload,responses_text
+from .foundations import creative_reference_context
 FESTIVAL_DOMAINS=["canneslions.com","dandad.org","oneclub.org","clios.com","effie.org","fiapawards.com","elojodeiberoamerica.com","elsolfestival.com","sxsw.com","desachate.com","circulopublicidad.com"]
 MARKET_RESEARCH_DOMAINS=[
     "kantar.com", "nielseniq.com", "ipsos.com", "gk.com", "euromonitor.com",
@@ -188,44 +189,61 @@ def generate_campaign_plan(project_name: str, brief: dict, decision: dict, board
 
 
 def local_production_proposals(project_name: str, brief: dict, board: dict, plan: dict) -> dict:
-    """Turn an approved plan into editable executions, not final production assets."""
+    """Turn an approved plan into a concise creative proposal, never a pasted brief."""
     selected_id = board.get("selected_territory_id", "") if isinstance(board, dict) else ""
     territories = board.get("territorios", []) if isinstance(board, dict) else []
     territory = next((item for item in territories if item.get("id") == selected_id), territories[0] if territories else {})
     base = plan.get("base_aprobada", {}) if isinstance(plan, dict) else {}
-    product = brief.get("product") or project_name
-    audience = brief.get("audience") or "el público prioritario"
+    product = (brief.get("product") or project_name).split(".")[0].strip()[:110]
+    audience = (brief.get("audience") or "el público prioritario").split(".")[0].strip()[:180]
     zone = base.get("territorio") or brief.get("territory") or "la plaza definida"
-    idea = base.get("idea_central") or territory.get("idea_central") or "la idea central aprobada"
-    tone = territory.get("tono") or brief.get("brand_tone") or "claro, cercano y específico"
-    proof = brief.get("proof") or "la prueba real que la marca pueda sostener"
+    tone = territory.get("tono") or brief.get("brand_tone") or "cercano, preciso y con una observación cotidiana"
+    proof = (brief.get("proof") or "el producto real y su elaboración").split(".")[0].strip()[:160]
     is_alfajor_case = "alfajor" in product.lower() or "alfajor" in project_name.lower()
+    if is_alfajor_case:
+        campaign = "No esperes el viaje"
+        core = "El alfajor artesanal no tiene que esperar la ruta, la terminal ni el regalo: también puede convertir un corte cualquiera en un pequeño viaje."
+        verbal = "No esperes el viaje. Flor de Panzada."
+        scripts = [
+            {"id":"guion_video_15","pieza":"Película madre · No esperes el viaje","medio":"Social, pantallas y video corto","duracion_formato":"20 s · vertical 9:16","objetivo":"Mover al alfajor artesanal del recuerdo de viaje a la pausa elegida de todos los días.","propuesta":"Abrimos en una terminal: una voz anuncia una salida. Corte revelador: no es una terminal, es el timbre del recreo. La épica del viaje se traslada a una escena mínima y reconocible.","guion":"0–3 s · SFX terminal. VO: «Atención pasajeros…».\n3–6 s · Timbre de recreo. Corte a chicos saliendo y un adulto abriendo la mochila.\n6–12 s · Primer plano honesto del alfajor, sin food porn. Un chico: «¿Pero no eran para viajar?»\n12–17 s · Respuesta: «¿Y quién dijo que hoy no?»\n17–20 s · Pack real + «No esperes el viaje. Flor de Panzada.»","produccion":"Una locación escolar/comercial real, casting con adultos responsables, producto y packaging definitivos. Mantener el giro en montaje, no en explicación.","control":"¿El remate transforma de verdad el rol de la categoría o podría decirlo cualquier snack?"},
+            {"id":"guion_radio_30","pieza":"Radio · Próxima parada","medio":"Radio local y audio digital","duracion_formato":"30 s · audio","objetivo":"Construir una idea sonora propia que la gente pueda repetir.","propuesta":"Usar el código inconfundible de la terminal para anunciar destinos domésticos: recreo, salida del trabajo, merienda. La marca no narra; irrumpe con el giro.","guion":"SFX: parlante de terminal, rueda de valija.\nLOCUTOR: «Atención pasajeros. Próxima parada: recreo. Andén dos: la salida del trabajo. Servicio especial: esa merienda que te salva el día.»\nSFX: timbre escolar.\nVO JOVEN: «¿Un alfajor de viaje?»\nVO ADULTO: «No. Un alfajor para no esperar el viaje.»\nLOCUTOR: «Flor de Panzada. No esperes el viaje.»","produccion":"Diseñar una identidad sonora propia: parlante, timbre, pausa y cierre. Validar disponibilidad y mención de puntos de venta antes de agregarla.","control":"¿La idea se entiende sin imagen y la frase final queda en la cabeza sin explicar el chiste?"},
+            {"id":"guion_pdv","pieza":"Punto de venta · Próxima parada","medio":"Exhibidor, stopper y mostrador","duracion_formato":"Una lectura de 2 segundos","objetivo":"Hacer que la idea aparezca exactamente donde se decide la compra.","propuesta":"El exhibidor toma la lógica de un panel de partidas, pero en vez de ciudades anuncia momentos: RECREO / MERIENDA / VOLVER A CASA. El producto ocupa el lugar de la salida.","guion":"Titular: «PRÓXIMA PARADA: UN BUEN MOMENTO».\nSubtítulo mínimo: «No esperes el viaje».\nProducto/pack real al centro.\nCierre: Flor de Panzada.\nNo sumar precio, origen ni promesas si no están confirmadas.","produccion":"Adaptar a medidas reales del comercio. Probar legibilidad desde un metro y resolver reposición sin tapar el pack.","control":"¿Se entiende sin leer un párrafo y hace que el producto parezca una elección de ahora?"},
+            {"id":"guion_social_local","pieza":"Social · Destinos de todos los días","medio":"Reels, historias y cuentas de cercanía","duracion_formato":"4 piezas de 6–10 s","objetivo":"Extender una idea madre sin convertirla en posteos de producto.","propuesta":"Cada pieza abre como un anuncio de viaje y revela un destino cotidiano: el recreo, el banco de la plaza, la salida del club, el viaje en ómnibus de todos los días.","guion":"Formato fijo: 0–2 s, placa/sonido de terminal. 2–6 s, giro hacia un destino cotidiano. 6–9 s, alfajor y frase: «No esperes el viaje».\nVariantes: «Próxima parada: recreo» / «Próxima parada: después del club» / «Próxima parada: cinco minutos para vos».\nNo usar locaciones ni testimonios falsos.","produccion":"Armar una matriz de destinos que existan en cada plaza. Subtítulos siempre; una versión limpia para pauta y otra con información comercial verificable.","control":"¿Todas las piezas podrían reconocerse sin logo como parte del mismo sistema?"},
+        ]
+    else:
+        campaign = territory.get("nombre", "La idea que entra en la vida real")
+        core = (territory.get("idea_central") or "Hacer que la propuesta deje de ser una descripción y se vuelva una elección concreta.").split(".")[0][:240]
+        verbal = "Una idea propia, una escena y una acción concreta."
+        scripts = [
+            {"id":"guion_video_15","pieza":"Película madre","medio":"Video y social","duracion_formato":"15–20 s","objetivo":"Presentar el conflicto y resolverlo con un giro propio de la marca.","propuesta":"Una sola escena que haga visible la tensión; el producto o servicio entra como resolución, no como aparición decorativa.","guion":"0–3 s · Situación reconocible.\n3–8 s · Conflicto o contradicción.\n8–14 s · Giro: la marca vuelve inevitable la resolución.\n14–20 s · Producto real, frase de campaña y acción.","produccion":"Definir producto, locación, activo de marca y una versión silenciosa antes de filmar.","control":"¿Hay una idea que sobreviva sin música, estética ni logo?"},
+            {"id":"guion_radio_30","pieza":"Audio con giro","medio":"Radio y audio digital","duracion_formato":"30 s","objetivo":"Hacer que la tensión se escuche antes de que la marca sea nombrada.","propuesta":"Construir una escena sonora donde el giro de la plataforma sea la razón de recordar la marca.","guion":"0–8 s · Universo sonoro.\n8–18 s · Conflicto en diálogo.\n18–25 s · Giro de marca.\n25–30 s · Frase de campaña, marca y acción confirmada.","produccion":"Definir voz, ritmo y sonido propio; no agregar menciones que el canal no pueda sostener.","control":"¿Se recuerda por su situación y no por una locución de oferta?"},
+            {"id":"guion_pdv","pieza":"Decisión en 2 segundos","medio":"Punto de venta","duracion_formato":"Exhibición y cartel","objetivo":"Concentrar la idea en una lectura inmediata.","propuesta":"Una pregunta o frase, producto/prueba y acción. Nada más.","guion":"1. Tensión en cinco palabras.\n2. Producto real / prueba comprobable.\n3. Marca y acción de compra.","produccion":"Confirmar medidas, stock y condición comercial antes de diseñar.","control":"¿Se puede leer de pasada y sigue siendo la misma idea?"},
+        ]
     return {
-        "propuesta_de_campana": {
-            "nombre": territory.get("nombre", "Campaña en desarrollo"),
-            "idea_rectora": idea,
-            "publico": audience,
-            "territorio": zone,
-            "promesa_de_trabajo": f"Hacer que {product} sea una elección concreta para {audience}, usando {proof} sin promesas que la marca no pueda verificar.",
-            "tono_y_sistema": f"{tone}. Mantener una sola idea, producto/proof visibles y adaptaciones locales sin estereotipos.",
+        "creative_version": 2,
+        "propuesta_de_campana": {"nombre": campaign, "idea_rectora": core, "publico": audience, "territorio": zone, "promesa_de_trabajo": core, "tono_y_sistema": f"{tone}. Frase rectora: «{verbal}»"},
+        "criterio_creativo": {
+            "principios": [
+                "Una observación reconocible antes que una descripción del producto.",
+                "Un giro que haga propia a la marca, no una variante estética de la categoría.",
+                "Una idea madre capaz de cambiar de medio sin perder reconocimiento.",
+                "Arte, audio y craft al servicio de la idea y de la conducta buscada.",
+            ],
+            "referencias": creative_reference_context(),
+            "aclaracion": "Estas referencias orientan el criterio de OLIVA; no se imita ni se atribuye una idea a ninguna persona.",
         },
-        "propuestas_de_produccion": [
-            {"id": "guion_video_15", "pieza": "Video vertical de lanzamiento", "medio": "Social y pantallas de punto de venta", "duracion_formato": "15–20 s · vertical 9:16", "objetivo": "Abrir la nueva ocasión, mostrar la prueba y terminar con una acción concreta.", "propuesta": f"Una situación cotidiana reconocible en {zone} se interrumpe por una pregunta que reencuadra la categoría. {product} entra como respuesta demostrable, no como decoración.", "guion": f"0–3 s: situación/gesto de {audience} y pregunta en pantalla. 3–9 s: producto en uso o prueba real ({proof}). 9–14 s: la idea central: «{idea}». 14–20 s: marca, punto/acción disponible y cierre breve.", "produccion": "Definir locación real, producto final, packaging, disponibilidad y versión sin audio. Evitar imágenes genéricas de categoría.", "control": "¿Se entiende la ocasión, la prueba y el siguiente paso sin depender de una estética atractiva?"},
-            {"id": "guion_radio_30", "pieza": "Cuña de radio local", "medio": "Radio y audio de cercanía", "duracion_formato": "20–30 s · audio", "objetivo": "Generar frecuencia, una escena recordable y una invitación a encontrar el producto.", "propuesta": f"Una mini escena sonora de rutina en {zone}; el sonido y la voz llevan la idea antes de nombrar la marca.", "guion": f"0–4 s: ambiente de una ocasión cotidiana (sin caricaturizar la zona). 4–12 s: voz/diálogo plantea la tensión. 12–20 s: resolución con {product} y prueba: {proof}. 20–30 s: idea «{idea}», marca y llamado a consultar o encontrarlo en puntos adheridos.", "produccion": "Definir voz, acento sin estereotipo, música original/licenciada, efectos y menciones comerciales disponibles por plaza.", "control": "¿La marca y la idea se recuerdan sólo al escuchar? ¿El llamado coincide con la distribución real?"},
-            {"id": "guion_pdv", "pieza": "Exhibición de elección", "medio": "Góndola, mostrador y material comercial", "duracion_formato": "Cartel / stoppers / exhibidor", "objetivo": "Resolver la decisión en segundos donde el producto está realmente disponible.", "propuesta": f"Una lectura de tres capas: pregunta de ocasión, producto/prueba y acción de compra. El material no intenta contar toda la campaña.", "guion": f"Lectura 1 (2 s): pregunta o frase que abre «{idea}». Lectura 2 (3 s): foto/pack real de {product} + prueba verificable: {proof}. Lectura 3 (1 s): marca y acción: probalo / pedilo / encontralo aquí, según canal.", "produccion": "Confirmar medidas por comercio, materiales, precio si se comunica, stock, exhibición y responsables de instalación/reposición.", "control": "¿Se lee a distancia y mantiene una sola razón para elegir?"},
-            {"id": "guion_social_local", "pieza": "Serie social de cercanía", "medio": "Historias, reels y cuentas locales", "duracion_formato": "3–5 variantes de 6–15 s", "objetivo": "Dar continuidad a la plataforma y aprender qué ocasión o prueba moviliza mejor por plaza.", "propuesta": "Variantes de una misma estructura: ocasión real, prueba/producto, respuesta de marca y acción local. Cambia la situación; no cambia la idea rectora.", "guion": f"Variante A: ocasión cotidiana + {product}. Variante B: prueba detrás del producto ({proof}). Variante C: recomendación o punto de venta, solo si está confirmado. Cierre común: «{idea}» + marca.", "produccion": "Preparar textos, versiones con subtítulos, material de producto, permisos de personas/locaciones y una matriz de variantes por localidad.", "control": "¿Las variantes se sienten parte de la misma campaña y no publicaciones aisladas?"},
-        ],
+        "propuestas_de_produccion": scripts,
         "mesa_de_agentes": [
-            {"agente": "OLIVA Strategy", "rol": "Guardián del problema", "aporte": f"Fija el desafío y evita que la campaña reemplace una decisión de negocio: {idea}", "control": "La ejecución debe conducir a la conducta definida, no sólo a notoriedad."},
-            {"agente": "Director Creativo", "rol": "Idea y propiedad", "aporte": f"Convierte la tensión en una campaña con una regla única: {idea}", "control": "Si se puede cambiar el logo sin que se rompa, se vuelve a trabajar."},
+            {"agente": "OLIVA Strategy", "rol": "Guardián del problema", "aporte": f"Fija el desafío y evita que la campaña reemplace una decisión de negocio: {core}", "control": "La ejecución debe conducir a la conducta definida, no sólo a notoriedad."},
+            {"agente": "Director Creativo", "rol": "Idea y propiedad", "aporte": f"Convierte la tensión en una campaña con una regla única: {core}", "control": "Si se puede cambiar el logo sin que se rompa, se vuelve a trabajar."},
             {"agente": "Redactor", "rol": "Arquitectura verbal", "aporte": "Construye pregunta, demostración y cierre; no fabrica slogans aislados.", "control": "Cada palabra debe hacer visible la ocasión, la prueba o la acción."},
             {"agente": "Director de Arte", "rol": "Sistema visual", "aporte": "Define cómo la idea vive en imagen, producto, encuadre, color y composición antes de producir variantes.", "control": "La estética debe demostrar la idea y no disimular su ausencia."},
             {"agente": "Planificador de Medios", "rol": "Rol de soportes", "aporte": f"Localiza contacto, cobertura e indicadores para {zone} sin confundir hipótesis con medición.", "control": "Cada soporte debe justificar qué hace mejor que los demás."},
             {"agente": "Guardián de Marca y Producción", "rol": "Viabilidad", "aporte": "Controla tono, activos reales, disponibilidad, restricciones y consistencia entre piezas.", "control": "No aprobar una promesa, precio, punto de venta o activo visual que no esté confirmado."},
         ],
         "bocetos_visuales": [
-            {"id": "boceto_tablero", "titulo": "Tablero de dirección de arte", "pieza": "Sistema de campaña", "estado": "Boceto para validar, no arte final", "asset_url": "/creative/alfajores-concept-board-v1.png" if is_alfajor_case else "", "direccion": f"Cuatro momentos coherentes: ocasión cotidiana, prueba de {product}, elección en punto de venta y formato social. El lenguaje visual debe sostener {idea}.", "prompt_de_produccion": f"Tablero de cuatro fotogramas publicitarios para {product}, territorio {zone}; ocasión cotidiana real, prueba visual verificable, exhibición de compra y formato social; tono {tone}; sin texto inventado, sin logos falsos, sin clichés de categoría."},
-            {"id": "boceto_pdv", "titulo": "Boceto de elección en punto de venta", "pieza": "Exhibidor y cartel", "estado": "Dirección de arte a visualizar", "asset_url": "", "direccion": "Jerarquía en tres golpes de vista: ocasión/pregunta, producto con prueba y acción. El producto real debe dominar la composición.", "prompt_de_produccion": f"Mockup de exhibición comercial para {product}; lectura inmediata, espacio para pack real y prueba real, sistema visual coherente con {idea}, sin tipografía inventada ni precios falsos."},
+            {"id": "boceto_tablero", "titulo": "Tablero de dirección de arte", "pieza": "Sistema de campaña", "estado": "Boceto para validar, no arte final", "asset_url": "/creative/alfajores-concept-board-v1.png" if is_alfajor_case else "", "direccion": f"Cuatro momentos coherentes: ocasión cotidiana, prueba de {product}, elección en punto de venta y formato social. El lenguaje visual debe sostener {core}.", "prompt_de_produccion": f"Tablero de cuatro fotogramas publicitarios para {product}, territorio {zone}; ocasión cotidiana real, prueba visual verificable, exhibición de compra y formato social; tono {tone}; sin texto inventado, sin logos falsos, sin clichés de categoría."},
+            {"id": "boceto_pdv", "titulo": "Boceto de elección en punto de venta", "pieza": "Exhibidor y cartel", "estado": "Dirección de arte a visualizar", "asset_url": "", "direccion": "Jerarquía en tres golpes de vista: ocasión/pregunta, producto con prueba y acción. El producto real debe dominar la composición.", "prompt_de_produccion": f"Mockup de exhibición comercial para {product}; lectura inmediata, espacio para pack real y prueba real, sistema visual coherente con {core}, sin tipografía inventada ni precios falsos."},
         ],
         "faltantes_de_produccion": ["Producto, packaging y logos finales", "Lista de puntos de venta y cobertura confirmada", "Restricciones legales/promocionales", "Presupuesto, responsables y calendario de producción", "Activos visuales y sonoros aprobados de la marca"],
         "nota_del_director": "Son guiones de trabajo editables, no piezas finales. Ajustalos antes de producir y cargá luego los bocetos o materiales resultantes para revisión.",
@@ -238,11 +256,18 @@ def generate_production_proposals(project_name: str, brief: dict, board: dict, p
     if not s.openai_api_key:
         return local, "OLIVA Creative Director — producción guiada local"
     payload = {"proyecto": project_name, "brief": brief, "plataforma": board, "plan_de_campana": plan, "estructura_de_referencia": local}
-    instructions = "Sos OLIVA Creative Director en fase de producción. Desde una plataforma y plan aprobados, proponé guiones de trabajo editables para video, radio/audio, punto de venta y social. Cada propuesta debe incluir objetivo, público, medio/formato, vínculo con la idea, guion técnico, requisitos y control final. No inventes logos, precios, resultados, disponibilidad ni datos de consumo. Localizá sólo con datos presentes y marcá faltantes. Devolvé JSON con propuesta_de_campana, propuestas_de_produccion, faltantes_de_produccion y nota_del_director."
+    instructions = "Sos OLIVA Creative Director en fase de producción. No pegues el brief ni describas una ejecución genérica: encontrá una idea central breve, una tensión, un giro y una frase rectora. Cada guion debe tener escenas concretas, audio/imagen cuando corresponda, remate y un motivo por el que sólo esta marca puede hacerlo. No imites a publicistas vivos; aplicá los lentes de criterio provistos. Antes de escribir, rechazá cualquier idea intercambiable, explicación larga o estética sin concepto. Desde una plataforma y plan aprobados, proponé guiones de trabajo editables para video, radio/audio, punto de venta y social. Cada propuesta debe incluir objetivo, público, medio/formato, vínculo con la idea, guion técnico, requisitos y control final. No inventes logos, precios, resultados, disponibilidad ni datos de consumo. Localizá sólo con datos presentes y marcá faltantes. Devolvé JSON con propuesta_de_campana, propuestas_de_produccion, faltantes_de_produccion y nota_del_director.\nLENTES CREATIVOS OLIVA:\n" + creative_reference_context()
     try:
         text, model = responses_text({"model": s.openai_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
         data = json.loads(text or "{}")
-        return data if isinstance(data.get("propuestas_de_produccion"), list) else local, model
+        if isinstance(data.get("propuestas_de_produccion"), list):
+            # El modelo puede enriquecer la propuesta, pero la interfaz necesita
+            # siempre la mesa, los bocetos y el criterio que hacen visible el trabajo.
+            for key, value in local.items():
+                data.setdefault(key, value)
+            data["creative_version"] = 2
+            return data, model
+        return local, model
     except Exception:
         return local, "OLIVA Creative Director — producción guiada local (API no disponible)"
 CREATIVE_PROMPT="""Sos el comité creativo de OLIVA. Evaluá contra la estrategia aprobada y contexto de marca. No premies estética sin estrategia. Aplicá sustitución de logo, cambio de categoría y eliminación de estética. Puntúa 0-5 estrategia, verdad_humana, rol_de_marca, apropiabilidad, originalidad, claridad, fertilidad, coherencia, adecuacion_al_medio, viabilidad. Las primeras críticas son estrategia, coherencia y apropiabilidad. Respondé SOLO JSON: verdict (aprobable/revisar/no_alineada), scores y evaluation concreta."""

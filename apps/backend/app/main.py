@@ -982,12 +982,13 @@ def list_creative_plans(project_id: UUID, user: User = Depends(current_user), se
         session.add(plan); session.commit()
     if selected and plan and plan.status == "approved":
         content = json.loads(plan.content_json)
-        if not content.get("propuestas_de_produccion") or not content.get("mesa_de_agentes") or not content.get("bocetos_visuales"):
+        outdated = int(content.get("creative_version", 0) or 0) < 2
+        if outdated or not content.get("propuestas_de_produccion") or not content.get("mesa_de_agentes") or not content.get("bocetos_visuales"):
             stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
             brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective, "territory": project.territory}
             production, model = generate_production_proposals(project.name, brief, json.loads(selected.content_json), content)
             for key, value in production.items():
-                if key not in content:
+                if outdated or key not in content:
                     content[key] = value
             plan.content_json = json.dumps(content, ensure_ascii=False); plan.model_used = model; plan.updated_at = now(); session.add(plan); session.commit()
     plans = session.exec(select(CreativeProductionPlan).where(CreativeProductionPlan.project_id == project_id, CreativeProductionPlan.owner_id == user.id).order_by(CreativeProductionPlan.updated_at.desc())).all()
@@ -1002,7 +1003,8 @@ def update_creative_plan(project_id: UUID, plan_id: UUID, data: CreativeProducti
         raise HTTPException(404, "Plan de campaña no encontrado")
     content = dict(data.content)
     if data.status == "approved":
-        if not content.get("propuestas_de_produccion") or not content.get("mesa_de_agentes") or not content.get("bocetos_visuales"):
+        outdated = int(content.get("creative_version", 0) or 0) < 2
+        if outdated or not content.get("propuestas_de_produccion") or not content.get("mesa_de_agentes") or not content.get("bocetos_visuales"):
             concept = session.get(CreativeConcept, plan.concept_id)
             if not concept or concept.project_id != project.id or concept.owner_id != user.id:
                 raise HTTPException(409, "No se encontró la plataforma creativa que sustenta este plan")
@@ -1010,7 +1012,7 @@ def update_creative_plan(project_id: UUID, plan_id: UUID, data: CreativeProducti
             brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective, "territory": project.territory}
             production, model = generate_production_proposals(project.name, brief, json.loads(concept.content_json), content)
             for key, value in production.items():
-                if key not in content:
+                if outdated or key not in content:
                     content[key] = value
             plan.model_used = model
         project.workflow_stage = "produccion_creativa"; project.updated_at = now(); session.add(project)

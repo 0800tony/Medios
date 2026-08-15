@@ -36,9 +36,23 @@ AGENT_CATALOG = [
     {"key": "learning_curator", "name": "OLIVA Learning", "stage": "Aprendizaje", "description": "Transforma decisiones y resultados validados en aprendizajes reutilizables."},
 ]
 
+# Referencias declaradas por OLIVA. Son lentes de trabajo, no imitaciones de personas
+# ni garantía de que una idea provenga de un autor específico.
+CREATIVE_REFERENCE_LENSES = [
+    {"names": "Ramiro Agulla, Carlos Baccetti, Martín Mercado, Chacho Puebla, Leandro Raposo, Joaquín Cubría, Fernando Vega Olmos, Diego Medvedocky, Hernán Ponce", "lens": "observación cultural, idea simple y recordable, giro publicitario y construcción de campañas populares sin subestimar a la audiencia"},
+    {"names": "David Droga, Susan Credle, Debbi Vandeven, Anselmo Ramos, Pancho Cassis, Juan Cabral, Ricardo Silvestre, Fernando Machado", "lens": "ideas con punto de vista, craft subordinado al concepto, valentía relevante y sistemas de campaña que viven en medios distintos"},
+    {"names": "David Ogilvy, Rory Sutherland, Martin Lindstrom, Paco Underhill, Mark Ritson, Richard Shotton, Gerald Zaltman, Douglas Holt, Annie Pettit", "lens": "distintividad de marca, comportamiento real, contexto de compra, cultura, memoria y eficacia antes que adjetivos"},
+    {"names": "Michael Porter, Philip Kotler, Al Ries, Byron Sharp, Solomon, Graves", "lens": "elección competitiva, posicionamiento, disponibilidad mental y física, segmentación útil y disciplina comercial"},
+    {"names": "Claudio Invernizzi, Nacho Vallejo, Esteban Barreiro, Mario Taglioretti, Mauricio Minchilli, Gabriel Román, Diego Lev, Martín Carrier, Dominique Sarries, Emir Cámara, Álvaro Moré, Carina Silva, Chelo Waintraub, Bruno Petcho, Marco Caltieri, Leonel Delfino, Toto Barrera, Bicho Orlando, Gabriel Lista, Diego Lazcano, Gonzalo López Baliñas, Rafael Bartaburu Trujillo", "lens": "lectura local, oficio uruguayo, cercanía cultural, realidad de medios y producción regional"},
+]
+
 
 def foundational_context() -> str:
     return "\n".join(
         f"- {item['author']} · {item['work']}: {item['lens']}."
         for item in FOUNDATIONAL_REFERENCES
     )
+
+
+def creative_reference_context() -> str:
+    return "\n".join(f"- {item['names']}: {item['lens']}." for item in CREATIVE_REFERENCE_LENSES)
