@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 import base64
-import html
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -1014,42 +1013,6 @@ def update_creative_plan(project_id: UUID, plan_id: UUID, data: CreativeProducti
     return creative_plan_output(plan)
 
 
-def local_visual_board(title: str, campaign: str, idea: str, focus: str, palette: str, assets: list[BrandAsset]) -> tuple[bytes, str, str]:
-    """Create a real, project-specific visual draft when image generation is unavailable."""
-    def text(value: object, limit: int = 170) -> str:
-        return html.escape(" ".join(str(value or "").split())[:limit])
-    logo = ""
-    for asset in assets:
-        path = Path(asset.storage_path)
-        if path.exists() and asset.content_type.startswith("image/"):
-            encoded = base64.b64encode(path.read_bytes()).decode()
-            logo = f'<image href="data:{html.escape(asset.content_type)};base64,{encoded}" x="1260" y="76" width="180" height="90" preserveAspectRatio="xMidYMid meet"/>'
-            break
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1536" height="1024" viewBox="0 0 1536 1024">
-  <rect width="1536" height="1024" fill="#f4f1e9"/>
-  <rect x="56" y="48" width="1424" height="928" rx="26" fill="#153f35"/>
-  <rect x="86" y="78" width="1364" height="868" rx="18" fill="#f4f1e9"/>
-  <rect x="86" y="78" width="1364" height="98" rx="18" fill="#153f35"/>
-  <text x="128" y="132" fill="#d9ff43" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" letter-spacing="4">OLIVA · BOCETO DE DIRECCIÓN DE ARTE</text>
-  {logo}
-  <text x="128" y="260" fill="#18221f" font-family="Arial, Helvetica, sans-serif" font-size="64" font-weight="800">{text(campaign, 42)}</text>
-  <text x="128" y="314" fill="#52615a" font-family="Arial, Helvetica, sans-serif" font-size="26">{text(title, 82)}</text>
-  <rect x="128" y="374" width="600" height="410" rx="18" fill="#dacbaf"/>
-  <circle cx="428" cy="564" r="145" fill="#d9ff43"/>
-  <rect x="246" y="618" width="365" height="100" rx="14" fill="#153f35"/>
-  <path d="M160 740 C270 650, 390 820, 535 705 S690 750, 714 680" stroke="#18221f" stroke-width="9" fill="none" stroke-linecap="round"/>
-  <rect x="770" y="374" width="552" height="188" rx="18" fill="#153f35"/>
-  <text x="810" y="430" fill="#d9ff43" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" letter-spacing="3">IDEA A VISUALIZAR</text>
-  <text x="810" y="481" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="27">{text(idea, 116)}</text>
-  <rect x="770" y="594" width="552" height="190" rx="18" fill="#b9ccac"/>
-  <text x="810" y="650" fill="#153f35" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" letter-spacing="3">FOCO SOLICITADO</text>
-  <text x="810" y="701" fill="#18221f" font-family="Arial, Helvetica, sans-serif" font-size="26">{text(focus, 120)}</text>
-  <rect x="128" y="838" width="1194" height="58" rx="12" fill="#ffffff"/>
-  <text x="156" y="874" fill="#153f35" font-family="Arial, Helvetica, sans-serif" font-size="19">Boceto generado desde la campaña aprobada · Paleta: {text(palette, 88)}</text>
-</svg>'''
-    return svg.encode(), "image/svg+xml", "OLIVA Art Director — boceto compositivo"
-
-
 def creative_visual_output(draft: CreativeVisualDraft) -> CreativeVisualOut:
     return CreativeVisualOut(id=draft.id, project_id=draft.project_id, plan_id=draft.plan_id, title=draft.title, prompt=draft.prompt, status=draft.status, model_used=draft.model_used, created_at=draft.created_at)
 
@@ -1058,6 +1021,16 @@ def creative_visual_output(draft: CreativeVisualDraft) -> CreativeVisualOut:
 def list_creative_visuals(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     owned_project(project_id, user, session)
     drafts = session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project_id, CreativeVisualDraft.owner_id == user.id).order_by(CreativeVisualDraft.created_at.desc())).all()
+    # Retira los marcadores técnicos de una versión anterior: nunca fueron arte ni
+    # deben ocupar el lugar de un boceto real solicitado por el equipo.
+    legacy = [draft for draft in drafts if "boceto compositivo" in draft.model_used.lower()]
+    for draft in legacy:
+        if draft.storage_path:
+            Path(draft.storage_path).unlink(missing_ok=True)
+        session.delete(draft)
+    if legacy:
+        session.commit()
+        drafts = [draft for draft in drafts if draft not in legacy]
     return [creative_visual_output(draft) for draft in drafts]
 
 
@@ -1070,6 +1043,8 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
     concept = session.get(CreativeConcept, plan.concept_id)
     if not concept or concept.owner_id != user.id:
         raise HTTPException(409, "Elegí una plataforma creativa antes de generar un boceto")
+    if not settings.openai_api_key:
+        raise HTTPException(503, "No se generó ningún boceto: falta configurar una clave de API de OpenAI con acceso a generación de imágenes.")
     plan_content = json.loads(plan.content_json); board = json.loads(concept.content_json)
     base = plan_content.get("base_aprobada", {}); assets = session.exec(select(BrandAsset).where(BrandAsset.client_id == project.client_id, BrandAsset.owner_id == user.id).order_by(BrandAsset.created_at.desc())).all()
     palette = next((asset.palette for asset in assets if asset.palette.strip()), "#153F35 verde profundo, #D9FF43 lima, #F4F1E9 papel cálido")
@@ -1080,22 +1055,17 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
         f"Use OLIVA Publicidad presentation language: editorial grid, warm paper background, deep forest green and acid lime accents, precise black marker annotations, sophisticated Latin American agency pitch aesthetic. Palette: {palette}. "
         "Show a clear empty area for the real client logo to be overlaid later; never invent logos, words, labels, packaging names, prices or claims. Avoid generic stock advertising, clichés and watermarks."
     )
-    raw = b""; content_type = "image/png"; model_used = settings.openai_image_model
-    if settings.openai_api_key:
-        try:
-            from openai import OpenAI
-            response = OpenAI(api_key=settings.openai_api_key).images.generate(model=settings.openai_image_model, prompt=prompt, size="1536x1024", quality="medium", output_format="png")
-            encoded = response.data[0].b64_json
-            if not encoded:
-                raise RuntimeError("La imagen no llegó en el formato esperado")
-            raw = base64.b64decode(encoded)
-        except Exception:
-            raw, content_type, model_used = local_visual_board(data.title.strip(), str(base.get("plataforma", "Campaña")), str(base.get("idea_central", "")), data.focus or "Desarrollar la ejecución principal", palette, assets)
-    else:
-        raw, content_type, model_used = local_visual_board(data.title.strip(), str(base.get("plataforma", "Campaña")), str(base.get("idea_central", "")), data.focus or "Desarrollar la ejecución principal", palette, assets)
-    extension = ".png" if content_type == "image/png" else ".svg"
-    draft = CreativeVisualDraft(project_id=project.id, plan_id=plan.id, owner_id=user.id, title=data.title.strip(), prompt=prompt, storage_path="", content_type=content_type, status="generated", model_used=model_used)
-    path = Path(settings.upload_dir) / "creative-visuals" / str(project.id) / f"{draft.id}{extension}"; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw); draft.storage_path = str(path)
+    try:
+        from openai import OpenAI
+        response = OpenAI(api_key=settings.openai_api_key).images.generate(model=settings.openai_image_model, prompt=prompt, size="1536x1024", quality="medium", output_format="png")
+        encoded = response.data[0].b64_json
+        if not encoded:
+            raise RuntimeError("La imagen no llegó en el formato esperado")
+        raw = base64.b64decode(encoded)
+    except Exception as exc:
+        raise HTTPException(503, "No se generó ningún boceto. La cuenta de OpenAI no tiene cuota disponible para imágenes o la clave no tiene acceso a gpt-image-1.") from exc
+    draft = CreativeVisualDraft(project_id=project.id, plan_id=plan.id, owner_id=user.id, title=data.title.strip(), prompt=prompt, storage_path="", content_type="image/png", status="generated", model_used=settings.openai_image_model)
+    path = Path(settings.upload_dir) / "creative-visuals" / str(project.id) / f"{draft.id}.png"; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw); draft.storage_path = str(path)
     session.add(draft); session.commit(); session.refresh(draft)
     return creative_visual_output(draft)
 
@@ -1106,8 +1076,7 @@ def creative_visual_media(project_id: UUID, draft_id: UUID, user: User = Depends
     draft = session.get(CreativeVisualDraft, draft_id)
     if not draft or draft.project_id != project_id or draft.owner_id != user.id or not Path(draft.storage_path).exists():
         raise HTTPException(404, "Boceto visual no encontrado")
-    extension = ".png" if draft.content_type == "image/png" else ".svg"
-    return FileResponse(draft.storage_path, media_type=draft.content_type, filename=f"{safe_name(draft.title)}{extension}")
+    return FileResponse(draft.storage_path, media_type=draft.content_type, filename=f"{safe_name(draft.title)}.png")
 
 
 def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)
