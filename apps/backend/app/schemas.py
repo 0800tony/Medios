@@ -269,6 +269,15 @@ class CreativeConceptOut(BaseModel):
     id: UUID; project_id: UUID; dossier_id: UUID; decision_id: UUID; title: str; content: dict[str, object]; status: str; model_used: str; created_at: datetime; updated_at: datetime
 
 
+class CreativeProductionPlanUpdateIn(BaseModel):
+    content: dict[str, object]
+    status: str = Field(default="draft", pattern="^(draft|approved)$")
+
+
+class CreativeProductionPlanOut(BaseModel):
+    id: UUID; project_id: UUID; concept_id: UUID; content: dict[str, object]; status: str; model_used: str; created_at: datetime; updated_at: datetime
+
+
 class ClientMemoryIn(BaseModel):
     data: dict[str, str]
 

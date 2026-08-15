@@ -241,6 +241,19 @@ class CreativeConcept(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now)
 
 
+class CreativeProductionPlan(SQLModel, table=True):
+    """The editable bridge between an approved creative platform and production."""
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    concept_id: UUID = Field(foreign_key="creativeconcept.id", unique=True, index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    content_json: str = "{}"
+    status: str = Field(default="draft", index=True)
+    model_used: str = "OLIVA Campaign Planner — guía local"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
 class ClientMemory(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     client_id: UUID = Field(foreign_key="client.id", unique=True, index=True)

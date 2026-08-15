@@ -127,6 +127,64 @@ def generate_creative_concepts(project_name: str, brief: dict, strategy: dict, d
         return data if isinstance(data.get("territorios"), list) and len(data["territorios"]) == 3 else local, model
     except Exception:
         return local, "OLIVA Creative Director — guía local (API no disponible)"
+
+
+def local_campaign_plan(project_name: str, brief: dict, decision: dict, board: dict, territory_id: str) -> dict:
+    """Create an editable production and media plan without claiming unaudited audience data."""
+    territories = board.get("territorios", []) if isinstance(board, dict) else []
+    territory = next((item for item in territories if item.get("id") == territory_id), territories[0] if territories else {})
+    zone = brief.get("territory") or "la zona prioritaria definida en el proyecto"
+    campaign = territory.get("nombre", "la plataforma elegida")
+    idea = territory.get("idea_central", "la idea central aprobada")
+    selected_media = territory.get("medios", []) or ["punto de venta", "radio local", "social"]
+    product = brief.get("product") or project_name
+    return {
+        "base_aprobada": {
+            "plataforma": campaign,
+            "territorio": zone,
+            "idea_central": idea,
+            "ruta": decision.get("route_key", "ruta aprobada").replace("_", " "),
+        },
+        "criterio_de_medios": {
+            "estado": "Propuesta de trabajo; no sustituye una medición certificada de consumo de medios.",
+            "lectura_local": f"Para {zone}, se combinan contacto cercano al momento de compra, alcance regional y frecuencia en formatos cotidianos. Ajustar con datos de plaza, disponibilidad y costos reales.",
+            "evidencia_a_sumar": "Agregar estudios de medios, datos de distribuidores, inversión histórica o entrevistas de plaza cuando estén disponibles. Hasta entonces, cada soporte es una hipótesis explícita.",
+        },
+        "piezas_creativas": [
+            {"id": "pieza_1", "nombre": "Pieza madre de lanzamiento", "formato": "Video vertical 15–20 s", "funcion": f"Presentar {idea} con {product} como prueba y cierre de marca.", "prioridad": "Alta", "momento": "Lanzamiento / social y pantallas de punto de venta"},
+            {"id": "pieza_2", "nombre": "Mensaje de radio local", "formato": "Cuña 20–30 s", "funcion": "Construir frecuencia y recordación oral con una situación cotidiana y llamado al punto de venta.", "prioridad": "Alta", "momento": "Franja de movilidad, recreo o merienda según la plaza"},
+            {"id": "pieza_3", "nombre": "Exhibición de elección", "formato": "Cartel de góndola / mostrador", "funcion": "Resolver la elección rápida: producto, prueba, precio o llamada a probar, con lectura inmediata.", "prioridad": "Alta", "momento": "Punto de venta"},
+            {"id": "pieza_4", "nombre": "Contenido de cercanía", "formato": "Historias y piezas estáticas", "funcion": "Traducir la plataforma a momentos, preguntas y pruebas que admitan variación por barrio o localidad.", "prioridad": "Media", "momento": "Social / creadores y comercios locales"},
+        ],
+        "soportes_de_medios": [
+            {"id": "soporte_1", "soporte": "Punto de venta y canal comercial", "rol": "Capturar la decisión donde el producto se elige; priorizar comercios y zonas con disponibilidad real.", "cobertura": zone, "prioridad": "Alta", "indicador": "Exhibiciones activas, reposición y rotación por punto"},
+            {"id": "soporte_2", "soporte": "Radio y audio local", "rol": "Aportar frecuencia y cercanía en rutinas de movilidad y consumo cotidiano.", "cobertura": "Emisoras y audio con alcance comprobable en " + zone, "prioridad": "Alta", "indicador": "Cobertura contratada, frecuencia y consultas/ventas por plaza"},
+            {"id": "soporte_3", "soporte": "Social geolocalizado", "rol": "Alcanzar públicos próximos al área de distribución y llevarlos a una acción o punto concreto.", "cobertura": "Radio de distribución real, no territorio nacional por defecto", "prioridad": "Media", "indicador": "Alcance local, visualizaciones completas, visitas o mensajes"},
+            {"id": "soporte_4", "soporte": "Prensa y cuentas de cercanía", "rol": "Dar contexto, credibilidad o activación en plazas donde esos medios tengan lectura efectiva.", "cobertura": zone, "prioridad": "A validar", "indicador": "Audiencia declarada, respuestas y tráfico al comercio"},
+        ],
+        "fases": [
+            {"fase": "1. Preparar", "objetivo": "Asegurar disponibilidad, exhibición y una pieza madre antes de ampliar alcance.", "acciones": "Elegir comercios/puntos piloto, adaptar materiales y confirmar costos y cobertura."},
+            {"fase": "2. Lanzar y aprender", "objetivo": "Comprobar si la plataforma genera elección en la zona prioritaria.", "acciones": "Activar punto de venta, radio/audio y social local; registrar rotación, reposición y conversación."},
+            {"fase": "3. Ajustar y escalar", "objetivo": "Conservar lo que funciona y corregir lo que no antes de ampliar plazas.", "acciones": "Comparar plazas, soportes y mensajes; aprobar variantes y solo entonces aumentar inversión."},
+        ],
+        "medios_sugeridos_por_plataforma": selected_media,
+        "control_final": "Cada pieza debe explicar qué conducta busca, cómo desarrolla la idea central y por qué ese soporte cumple un rol que otro no puede reemplazar.",
+    }
+
+
+def generate_campaign_plan(project_name: str, brief: dict, decision: dict, board: dict, territory_id: str) -> tuple[dict, str]:
+    local = local_campaign_plan(project_name, brief, decision, board, territory_id)
+    s = get_settings()
+    if not s.openai_api_key:
+        return local, "OLIVA Campaign Planner — guía local"
+    payload = {"proyecto": project_name, "brief": brief, "decision_aprobada": decision, "plataforma_creativa": board, "territorio_elegido": territory_id, "estructura_de_referencia": local}
+    instructions = "Sos OLIVA Campaign Planner. Construí un plan editable de piezas, soportes y fases desde una plataforma creativa aprobada. Localizá para el territorio definido, pero no inventes datos de consumo de medios: marcá como hipótesis todo soporte no respaldado por una fuente. Cada medio debe tener un rol específico, indicador y cobertura realista. Devolvé JSON con piezas_creativas, soportes_de_medios, fases, criterio_de_medios y control_final."
+    try:
+        text, model = responses_text({"model": s.openai_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        data = json.loads(text or "{}")
+        return data if isinstance(data.get("piezas_creativas"), list) and isinstance(data.get("soportes_de_medios"), list) else local, model
+    except Exception:
+        return local, "OLIVA Campaign Planner — guía local (API no disponible)"
 CREATIVE_PROMPT="""Sos el comité creativo de OLIVA. Evaluá contra la estrategia aprobada y contexto de marca. No premies estética sin estrategia. Aplicá sustitución de logo, cambio de categoría y eliminación de estética. Puntúa 0-5 estrategia, verdad_humana, rol_de_marca, apropiabilidad, originalidad, claridad, fertilidad, coherencia, adecuacion_al_medio, viabilidad. Las primeras críticas son estrategia, coherencia y apropiabilidad. Respondé SOLO JSON: verdict (aprobable/revisar/no_alineada), scores y evaluation concreta."""
 def evaluate_creative(path:Path,content_type:str,name:str,medium:str,rationale:str,strategy:dict,brand_context:str)->dict:
     s=get_settings()

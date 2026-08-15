@@ -124,7 +124,15 @@ def test_mvp_flow():
         assert len(concept.json()["content"]["territorios"]) == 3
         selected_concept = client.patch(f"/api/projects/{project_id}/creative-concepts/{concept.json()['id']}", headers=headers, json={"content": concept.json()["content"], "status": "selected"})
         assert selected_concept.status_code == 200
-        assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "concepto_creativo"
+        assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "plan_de_campana"
+        plans = client.get(f"/api/projects/{project_id}/creative-plans", headers=headers)
+        assert plans.status_code == 200
+        assert len(plans.json()) == 1
+        assert plans.json()[0]["content"]["piezas_creativas"]
+        assert plans.json()[0]["content"]["soportes_de_medios"]
+        approved_plan = client.patch(f"/api/projects/{project_id}/creative-plans/{plans.json()[0]['id']}", headers=headers, json={"content": plans.json()[0]["content"], "status": "approved"})
+        assert approved_plan.status_code == 200
+        assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "produccion_creativa"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
         assert creative.status_code == 201
         assert creative.json()["verdict"] == "revisar"
