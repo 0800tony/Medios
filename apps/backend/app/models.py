@@ -58,6 +58,13 @@ class Project(SQLModel, table=True):
     brief: str = ""
     objective: str = ""
     status: ProjectStatus = Field(default=ProjectStatus.draft)
+    workflow_stage: str = Field(default="ingreso", index=True)
+    group_company: str = "Oliva Publicidad"
+    participants: str = ""
+    territory: str = ""
+    deadline: str = ""
+    budget: str = ""
+    confidentiality: str = "interno"
     client_id: UUID = Field(foreign_key="client.id", index=True)
     owner_id: UUID = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=now)
@@ -217,4 +224,55 @@ class CreativeSubmission(SQLModel, table=True):
     verdict: str = "pending"; score_json: str = "{}"; evaluation: str = ""
     model_used: str = "OLIVA Creative Review — modo local"
     owner_id: UUID = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=now)
+
+
+class ClientMemory(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    client_id: UUID = Field(foreign_key="client.id", unique=True, index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    data_json: str = "{}"
+    version: int = 1
+    updated_at: datetime = Field(default_factory=now)
+
+
+class LearningRecord(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    project_id: Optional[UUID] = Field(default=None, foreign_key="project.id", index=True)
+    client_id: Optional[UUID] = Field(default=None, foreign_key="client.id", index=True)
+    title: str
+    content: str
+    source_type: str = "observation"
+    tags: str = ""
+    confidence: str = "por_validar"
+    status: str = Field(default="proposed", index=True)
+    evidence_json: str = "[]"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class ApprovalTask(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    project_id: Optional[UUID] = Field(default=None, foreign_key="project.id", index=True)
+    kind: str = Field(index=True)
+    entity_id: str = ""
+    title: str
+    summary: str = ""
+    status: str = Field(default="pending", index=True)
+    notes: str = ""
+    created_at: datetime = Field(default_factory=now)
+    resolved_at: Optional[datetime] = None
+
+
+class AgentRun(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    agent_key: str = Field(index=True)
+    instruction: str = ""
+    output_json: str = "{}"
+    status: str = Field(default="draft", index=True)
+    model_used: str = "OLIVA OS — modo local"
     created_at: datetime = Field(default_factory=now)

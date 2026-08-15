@@ -7,6 +7,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - autenticación con email y JWT;
 - perfil de usuario con actualización de nombre y contraseña;
 - clientes y proyectos privados por usuario;
+- memoria versionada por cliente: decisiones, tono, audiencias, restricciones y aprendizajes aprobados;
 - edición y eliminación protegida de clientes y proyectos;
 - brief estratégico guiado, editable, persistente y con indicador de completitud;
 - directorio visible de clientes con industria y contexto;
@@ -18,7 +19,7 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - captura automática de título y fuente al guardar enlaces del Radar;
 - investigación web guiada por proyecto, con fuentes de mercado, prensa empresaria, medios especializados y foros claramente diferenciados;
 - Biblioteca Cognitiva para casos OLIVA, referencias visuales, criterios de marca, aprendizajes y casos premiados, conectada automáticamente a los proyectos pertinentes;
-- investigación de referencias en fuentes oficiales de Cannes Lions, D&AD, One Club, Clio y Effie;
+- catálogo de investigación de referencias en fuentes oficiales de Effie, Cannes Lions, D&AD, One Club, Clio, FIAP, El Ojo, El Sol, SXSW y Desachate;
 - análisis visual opcional de fotografías y recuperación automática de señales relevantes para cada brief;
 - lectura protegida del contenido público de artículos y metadatos de videos;
 - búsqueda híbrida: coincidencia temática local y similitud semántica mediante embeddings cuando hay una API key;
@@ -26,6 +27,9 @@ MVP de inteligencia estratégica para `ia.grupooliva.uy`. Permite registrar usua
 - contrabrief OLIVA Strategy de 32 apartados, versionado y sujeto a decisión de ruta y aprobación humana;
 - exactamente tres rutas estratégicas diferenciadas y preguntas priorizadas cuando falta información;
 - revisión de propuestas creativas contra la ruta estratégica aprobada, con matriz publicitaria de diez criterios;
+- agentes coordinados de briefing, investigación, estrategia, dirección creativa y curaduría de aprendizaje;
+- bandeja de aprobaciones: ningún aprendizaje, diagnóstico o evaluación queda incorporado como verdad sin revisión humana;
+- base metodológica atribuida a autores de OLIVA OS Product Book, usada como criterio de trabajo y no como evidencia del cliente;
 - análisis con OpenAI Responses API y modo local explícito cuando no hay API key;
 - descarga del diagnóstico con manifiesto de fuentes e impresión en PDF;
 - interfaz responsive: acceso, home, nuevo proyecto, proyecto y resultado;
@@ -78,6 +82,7 @@ npm run build
 | `GET/PATCH` | `/api/auth/me` | Consultar o actualizar el perfil |
 | `GET/POST` | `/api/clients` | Listar/crear clientes |
 | `PATCH/DELETE` | `/api/clients/{id}` | Editar/eliminar un cliente sin proyectos |
+| `GET/PUT` | `/api/clients/{id}/memory` | Consultar o versionar la memoria estratégica de un cliente |
 | `GET/POST` | `/api/projects` | Listar/crear proyectos |
 | `GET/PATCH/DELETE` | `/api/projects/{id}` | Consultar, editar o eliminar un proyecto |
 | `GET/PUT` | `/api/projects/{id}/brief` | Consultar o editar el brief estratégico completo |
@@ -85,6 +90,9 @@ npm run build
 | `POST` | `/api/library/links` | Guardar un caso, referencia o aprendizaje enlazado |
 | `POST` | `/api/library/files` | Guardar documentos e imágenes institucionales |
 | `POST` | `/api/library/festivals` | Investigar casos premiados en fuentes oficiales |
+| `GET` | `/api/library/festivals/catalog` | Consultar los festivales y archivos oficiales habilitados |
+| `GET/POST` | `/api/learning` | Consultar o proponer conocimiento reutilizable para revisión |
+| `GET` | `/api/foundations` | Consultar autores, obras y lentes metodológicas de OLIVA |
 | `GET` | `/api/knowledge` | Buscar la memoria global Radar OLIVA |
 | `POST` | `/api/knowledge/links` | Indexar un artículo o video |
 | `POST` | `/api/knowledge/photos` | Cargar e indexar una fotografía |
@@ -108,6 +116,10 @@ npm run build
 | `GET/PUT` | `/api/projects/{id}/strategy/decision` | Consultar o elegir la ruta que guiará la activación y la evaluación creativa |
 | `PATCH` | `/api/projects/{id}/strategy/approval` | Aprobar o pedir cambios a la estrategia |
 | `GET/POST` | `/api/projects/{id}/creative` | Listar o evaluar propuestas creativas |
+| `POST` | `/api/projects/{id}/creative/{creative_id}/learning` | Enviar una evaluación creativa a revisión como aprendizaje |
+| `GET/POST` | `/api/projects/{id}/agents` | Consultar ejecuciones o activar un agente del proyecto |
+| `GET` | `/api/agents` | Consultar los agentes disponibles |
+| `GET/PATCH` | `/api/approvals` | Ver y resolver aprobaciones pendientes |
 | `GET` | `/api/projects/{id}/report` | Descargar el diagnóstico y su manifiesto de fuentes |
 
 ## Producción
@@ -126,4 +138,6 @@ Sólo las referencias del Radar aprobadas por una persona entran al siguiente an
 
 La transcripción de grabaciones usa `gpt-transcribe` y admite hasta 25 MB. Sin una clave, el archivo igualmente queda protegido dentro del proyecto y la interfaz permite incorporar una transcripción manual.
 
-Las migraciones, el procesamiento asíncrono y el almacenamiento de objetos quedan fuera de este primer sprint y deben incorporarse antes de escalar el servicio.
+El arranque del backend añade de forma compatible las columnas de workflow del MVP a una base PostgreSQL ya existente. Para producción de alto volumen, el siguiente endurecimiento técnico es reemplazar esta transición por migraciones Alembic, almacenamiento de objetos y colas asíncronas.
+
+La Biblioteca Cognitiva no afirma que haya recopilado toda la historia de cada festival. Conserva un catálogo de fuentes oficiales, incorpora los resultados que se investigan y los somete al mismo ciclo de evidencia, contexto y aprobación humana que el resto del conocimiento.

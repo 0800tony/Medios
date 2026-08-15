@@ -66,12 +66,25 @@ class ProjectIn(BaseModel):
     client_id: UUID
     brief: str = ""
     objective: str = ""
+    group_company: str = "Oliva Publicidad"
+    participants: str = ""
+    territory: str = ""
+    deadline: str = ""
+    budget: str = ""
+    confidentiality: str = "interno"
 
 
 class ProjectUpdateIn(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     brief: str = ""
     objective: str = ""
+    workflow_stage: str = "ingreso"
+    group_company: str = "Oliva Publicidad"
+    participants: str = ""
+    territory: str = ""
+    deadline: str = ""
+    budget: str = ""
+    confidentiality: str = "interno"
 
 
 class DocumentOut(BaseModel):
@@ -204,6 +217,13 @@ class ProjectOut(BaseModel):
     brief: str
     objective: str
     status: ProjectStatus
+    workflow_stage: str
+    group_company: str
+    participants: str
+    territory: str
+    deadline: str
+    budget: str
+    confidentiality: str
     client_id: UUID
     created_at: datetime
     updated_at: datetime
@@ -234,3 +254,53 @@ class LibraryOut(BaseModel):
 class FestivalSearchIn(BaseModel): query: str = Field(min_length=3, max_length=500)
 class CreativeOut(BaseModel):
     id: UUID; project_id: UUID; name: str; medium: str; rationale: str; filename: str; content_type: str; size: int; verdict: str; scores: dict[str, int]; evaluation: str; model_used: str; created_at: datetime
+
+
+class ClientMemoryIn(BaseModel):
+    data: dict[str, str]
+
+
+class ClientMemoryOut(BaseModel):
+    id: UUID
+    client_id: UUID
+    data: dict[str, str]
+    version: int
+    updated_at: datetime
+
+
+class LearningRecordIn(BaseModel):
+    title: str = Field(min_length=3, max_length=250)
+    content: str = Field(min_length=12, max_length=20000)
+    source_type: str = Field(default="observation", max_length=80)
+    tags: str = Field(default="", max_length=1000)
+    confidence: str = Field(default="por_validar", max_length=80)
+    project_id: Optional[UUID] = None
+    client_id: Optional[UUID] = None
+    evidence: list[str] = []
+
+
+class LearningRecordOut(BaseModel):
+    id: UUID; project_id: Optional[UUID]; client_id: Optional[UUID]; title: str; content: str; source_type: str; tags: str; confidence: str; status: str; evidence: list[str]; created_at: datetime; updated_at: datetime
+
+
+class ApprovalResolveIn(BaseModel):
+    status: str = Field(pattern="^(approved|changes|rejected)$")
+    notes: str = Field(default="", max_length=10000)
+
+
+class ApprovalTaskOut(BaseModel):
+    id: UUID; project_id: Optional[UUID]; kind: str; entity_id: str; title: str; summary: str; status: str; notes: str; created_at: datetime; resolved_at: Optional[datetime]
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentRunIn(BaseModel):
+    agent_key: str = Field(min_length=3, max_length=80)
+    instruction: str = Field(default="", max_length=10000)
+
+
+class AgentRunOut(BaseModel):
+    id: UUID; project_id: UUID; agent_key: str; instruction: str; output: dict[str, object]; status: str; model_used: str; created_at: datetime
+
+
+class AgentDefinitionOut(BaseModel):
+    key: str; name: str; stage: str; description: str

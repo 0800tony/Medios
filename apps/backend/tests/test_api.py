@@ -150,6 +150,39 @@ def test_project_is_private():
         assert client.get("/api/projects", headers=headers).status_code == 200
 
 
+def test_memory_learning_agents_and_approvals():
+    with TestClient(app) as client:
+        headers = auth(client)
+        created_client = client.post("/api/clients", headers=headers, json={"name": "Cliente con memoria", "industry": "Alimentos"}).json()
+        project = client.post("/api/projects", headers=headers, json={"name": "Proyecto integrado", "client_id": created_client["id"], "brief": "Analizar lanzamiento", "objective": "Mejorar la elección", "territory": "Uruguay", "group_company": "Oliva Publicidad"})
+        assert project.status_code == 201
+        project_id = project.json()["id"]
+        assert project.json()["workflow_stage"] == "ingreso"
+        memory = client.get(f"/api/clients/{created_client['id']}/memory", headers=headers)
+        assert memory.status_code == 200
+        saved_memory = client.put(f"/api/clients/{created_client['id']}/memory", headers=headers, json={"data": {"tone": "Cercano y preciso", "rejected_patterns": "No usar estereotipos"}})
+        assert saved_memory.status_code == 200
+        assert saved_memory.json()["data"]["tone"] == "Cercano y preciso"
+        foundations = client.get("/api/foundations", headers=headers)
+        assert foundations.status_code == 200
+        assert any(item["author"] == "Donella Meadows" for item in foundations.json()["references"])
+        assert any(item["id"] == "desachate" for item in foundations.json()["festivals"])
+        run = client.post(f"/api/projects/{project_id}/agents/run", headers=headers, json={"agent_key": "briefing", "instruction": "Ordenar el pedido"})
+        assert run.status_code == 201
+        assert run.json()["output"]["tipo"] == "normalización"
+        approval = client.get("/api/approvals", headers=headers).json()[0]
+        resolved = client.patch(f"/api/approvals/{approval['id']}", headers=headers, json={"status": "approved", "notes": "Correcto"})
+        assert resolved.status_code == 200
+        assert resolved.json()["status"] == "approved"
+        learning = client.post("/api/learning", headers=headers, json={"project_id": project_id, "client_id": created_client["id"], "title": "La prueba precede a la promesa", "content": "En este proyecto, una prueba visible ayudó a ordenar la propuesta antes de comunicarla.", "source_type": "resultado", "confidence": "situado", "tags": "prueba, lanzamiento"})
+        assert learning.status_code == 201
+        pending = next(item for item in client.get("/api/approvals", headers=headers).json() if item["kind"] == "learning")
+        assert client.patch(f"/api/approvals/{pending['id']}", headers=headers, json={"status": "approved", "notes": "Respaldado"}).status_code == 200
+        records = client.get(f"/api/learning?project_id={project_id}&status_filter=approved", headers=headers)
+        assert records.status_code == 200
+        assert records.json()[0]["title"] == "La prueba precede a la promesa"
+
+
 def test_user_can_update_profile_and_password():
     with TestClient(app) as client:
         headers = auth(client)
