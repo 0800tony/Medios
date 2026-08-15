@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     openai_vision_model: str = "gpt-5.6"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_transcription_model: str = "gpt-transcribe"
+    openai_image_model: str = "gpt-image-1"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

@@ -41,6 +41,11 @@ def test_mvp_flow():
         updated_project = client.patch(f"/api/projects/{project_id}", headers=headers, json={"name": "Lanzamiento regional", "brief": "Necesitamos crecer con evidencia", "objective": "Aumentar consideración"})
         assert updated_project.status_code == 200
         assert updated_project.json()["name"] == "Lanzamiento regional"
+        logo = client.post(f"/api/clients/{created_client.json()['id']}/brand-assets", headers=headers, data={"label": "Logo principal", "palette": "#153F35, #D9FF43"}, files={"file": ("logo.png", b"\x89PNG\r\n\x1a\n", "image/png")})
+        assert logo.status_code == 201
+        assert logo.json()["palette"] == "#153F35, #D9FF43"
+        assert client.get(f"/api/clients/{created_client.json()['id']}/brand-assets", headers=headers).json()[0]["id"] == logo.json()["id"]
+        assert client.get(f"/api/clients/{created_client.json()['id']}/brand-assets/{logo.json()['id']}/media", headers=headers).content.startswith(b"\x89PNG")
         assert client.delete(f"/api/clients/{created_client.json()['id']}", headers=headers).status_code == 409
         brief = client.put(f"/api/projects/{project_id}/brief", headers=headers, json={"data": {"request": "Crecer con evidencia", "business_context": "Mercado competitivo", "product": "Servicio", "business_goal": "Crecer", "commercial_goal": "Generar oportunidades", "communication_goal": "Aumentar confianza", "audience": "Personas decisoras", "competitors": "Alternativas regionales", "proof": "Trayectoria", "restrictions": "Presupuesto acotado", "territory": "Uruguay e Interior", "deadline": "Tres meses"}})
         assert brief.status_code == 200

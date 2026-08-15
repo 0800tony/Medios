@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import base64
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,8 +16,8 @@ from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
 from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
-from .models import AgentRun, ApprovalTask, Client, ClientMemory, CreativeConcept, CreativeProductionPlan, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
-from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
+from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeConcept, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
+from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
 from .intelligence import evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
@@ -114,6 +115,10 @@ def memory_output(memory: ClientMemory) -> ClientMemoryOut:
     return ClientMemoryOut(id=memory.id, client_id=memory.client_id, data=json.loads(memory.data_json), version=memory.version, updated_at=memory.updated_at)
 
 
+def brand_asset_output(asset: BrandAsset) -> BrandAssetOut:
+    return BrandAssetOut(id=asset.id, client_id=asset.client_id, label=asset.label, filename=asset.filename, content_type=asset.content_type, size=asset.size, palette=asset.palette, created_at=asset.created_at)
+
+
 def learning_output(record: LearningRecord) -> LearningRecordOut:
     return LearningRecordOut(id=record.id, project_id=record.project_id, client_id=record.client_id, title=record.title, content=record.content, source_type=record.source_type, tags=record.tags, confidence=record.confidence, status=record.status, evidence=json.loads(record.evidence_json), created_at=record.created_at, updated_at=record.updated_at)
 
@@ -178,11 +183,46 @@ def save_client_memory(client_id: UUID, data: ClientMemoryIn, user: User = Depen
     return memory_output(memory)
 
 
+@app.get("/api/clients/{client_id}/brand-assets", response_model=list[BrandAssetOut])
+def list_brand_assets(client_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_client(client_id, user, session)
+    return [brand_asset_output(asset) for asset in session.exec(select(BrandAsset).where(BrandAsset.client_id == client_id, BrandAsset.owner_id == user.id).order_by(BrandAsset.created_at.desc())).all()]
+
+
+@app.post("/api/clients/{client_id}/brand-assets", response_model=BrandAssetOut, status_code=201)
+async def upload_brand_asset(client_id: UUID, file: UploadFile = File(...), label: str = Form(default="Logo de marca", max_length=160), palette: str = Form(default="", max_length=500), user: User = Depends(current_user), session: Session = Depends(get_session)):
+    client = owned_client(client_id, user, session)
+    content_type = file.content_type or "application/octet-stream"
+    if content_type not in PHOTO_TYPES:
+        raise HTTPException(415, "Subí un logo PNG, JPG o WEBP")
+    raw = await file.read(PHOTO_MAX_SIZE + 1)
+    if len(raw) > PHOTO_MAX_SIZE:
+        raise HTTPException(413, "El logo supera 10 MB")
+    filename = safe_name(file.filename or "logo")
+    asset = BrandAsset(client_id=client.id, owner_id=user.id, label=label.strip() or "Logo de marca", filename=filename, storage_path="", content_type=content_type, size=len(raw), palette=palette.strip())
+    path = Path(settings.upload_dir) / "brands" / str(client.id) / f"{asset.id}_{filename}"
+    path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw); asset.storage_path = str(path)
+    session.add(asset); session.commit(); session.refresh(asset)
+    return brand_asset_output(asset)
+
+
+@app.get("/api/clients/{client_id}/brand-assets/{asset_id}/media")
+def brand_asset_media(client_id: UUID, asset_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_client(client_id, user, session)
+    asset = session.get(BrandAsset, asset_id)
+    if not asset or asset.client_id != client_id or asset.owner_id != user.id or not Path(asset.storage_path).exists():
+        raise HTTPException(404, "Logo no encontrado")
+    return FileResponse(asset.storage_path, media_type=asset.content_type, filename=asset.filename)
+
+
 @app.delete("/api/clients/{client_id}", status_code=204)
 def delete_client(client_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     client = owned_client(client_id, user, session)
     if session.exec(select(Project).where(Project.client_id == client.id)).first():
         raise HTTPException(409, "Este cliente tiene proyectos. Eliminá o reasigná esos proyectos primero.")
+    for asset in session.exec(select(BrandAsset).where(BrandAsset.client_id == client.id)).all():
+        if asset.storage_path: Path(asset.storage_path).unlink(missing_ok=True)
+        session.delete(asset)
     session.delete(client); session.commit()
 
 
@@ -555,6 +595,9 @@ def delete_project(project_id: UUID, user: User = Depends(current_user), session
     for record in session.exec(select(LearningRecord).where(LearningRecord.project_id == project.id)).all(): session.delete(record)
     for task in session.exec(select(ApprovalTask).where(ApprovalTask.project_id == project.id)).all(): session.delete(task)
     for run in session.exec(select(AgentRun).where(AgentRun.project_id == project.id)).all(): session.delete(run)
+    for draft in session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project.id)).all():
+        if draft.storage_path: Path(draft.storage_path).unlink(missing_ok=True)
+        session.delete(draft)
     for plan in session.exec(select(CreativeProductionPlan).where(CreativeProductionPlan.project_id == project.id)).all(): session.delete(plan)
     for concept in session.exec(select(CreativeConcept).where(CreativeConcept.project_id == project.id)).all(): session.delete(concept)
     for d in session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id)).all():session.delete(d)
@@ -974,6 +1017,62 @@ def update_creative_plan(project_id: UUID, plan_id: UUID, data: CreativeProducti
     plan.content_json = json.dumps(content, ensure_ascii=False); plan.status = data.status; plan.updated_at = now(); session.add(plan)
     session.commit(); session.refresh(plan)
     return creative_plan_output(plan)
+
+
+def creative_visual_output(draft: CreativeVisualDraft) -> CreativeVisualOut:
+    return CreativeVisualOut(id=draft.id, project_id=draft.project_id, plan_id=draft.plan_id, title=draft.title, prompt=draft.prompt, status=draft.status, model_used=draft.model_used, created_at=draft.created_at)
+
+
+@app.get("/api/projects/{project_id}/creative-visuals", response_model=list[CreativeVisualOut])
+def list_creative_visuals(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    drafts = session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project_id, CreativeVisualDraft.owner_id == user.id).order_by(CreativeVisualDraft.created_at.desc())).all()
+    return [creative_visual_output(draft) for draft in drafts]
+
+
+@app.post("/api/projects/{project_id}/creative-plans/{plan_id}/visuals/generate", response_model=CreativeVisualOut, status_code=201)
+def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisualGenerateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    plan = session.get(CreativeProductionPlan, plan_id)
+    if not plan or plan.project_id != project.id or plan.owner_id != user.id:
+        raise HTTPException(404, "Plan de campaña no encontrado")
+    concept = session.get(CreativeConcept, plan.concept_id)
+    if not concept or concept.owner_id != user.id:
+        raise HTTPException(409, "Elegí una plataforma creativa antes de generar un boceto")
+    if not settings.openai_api_key:
+        raise HTTPException(503, "La generación visual requiere una API de OpenAI configurada. El resto del plan y los bocetos de dirección de arte siguen disponibles.")
+    plan_content = json.loads(plan.content_json); board = json.loads(concept.content_json)
+    base = plan_content.get("base_aprobada", {}); assets = session.exec(select(BrandAsset).where(BrandAsset.client_id == project.client_id, BrandAsset.owner_id == user.id).order_by(BrandAsset.created_at.desc())).all()
+    palette = next((asset.palette for asset in assets if asset.palette.strip()), "#153F35 verde profundo, #D9FF43 lima, #F4F1E9 papel cálido")
+    prompt = (
+        "Create one high-end advertising concept board, not finished artwork and no readable text. "
+        f"Campaign: {base.get('plataforma', 'approved creative platform')}. Idea: {base.get('idea_central', '')}. "
+        f"Territory: {base.get('territorio', '')}. Focus: {data.focus or 'show the most important campaign execution'}. "
+        f"Use OLIVA Publicidad presentation language: editorial grid, warm paper background, deep forest green and acid lime accents, precise black marker annotations, sophisticated Latin American agency pitch aesthetic. Palette: {palette}. "
+        "Show a clear empty area for the real client logo to be overlaid later; never invent logos, words, labels, packaging names, prices or claims. Avoid generic stock advertising, clichés and watermarks."
+    )
+    try:
+        from openai import OpenAI
+        response = OpenAI(api_key=settings.openai_api_key).images.generate(model=settings.openai_image_model, prompt=prompt, size="1536x1024", quality="medium", output_format="png")
+        encoded = response.data[0].b64_json
+        if not encoded:
+            raise RuntimeError("La imagen no llegó en el formato esperado")
+        raw = base64.b64decode(encoded)
+    except Exception as exc:
+        raise HTTPException(503, "No fue posible generar el boceto visual ahora. Verificá la cuota de la API de OpenAI e intentá nuevamente.") from exc
+    draft = CreativeVisualDraft(project_id=project.id, plan_id=plan.id, owner_id=user.id, title=data.title.strip(), prompt=prompt, storage_path="", status="generated", model_used=settings.openai_image_model)
+    path = Path(settings.upload_dir) / "creative-visuals" / str(project.id) / f"{draft.id}.png"; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw); draft.storage_path = str(path)
+    session.add(draft); session.commit(); session.refresh(draft)
+    return creative_visual_output(draft)
+
+
+@app.get("/api/projects/{project_id}/creative-visuals/{draft_id}/media")
+def creative_visual_media(project_id: UUID, draft_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    draft = session.get(CreativeVisualDraft, draft_id)
+    if not draft or draft.project_id != project_id or draft.owner_id != user.id or not Path(draft.storage_path).exists():
+        raise HTTPException(404, "Boceto visual no encontrado")
+    return FileResponse(draft.storage_path, media_type=draft.content_type, filename=f"{safe_name(draft.title)}.png")
 
 
 def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)

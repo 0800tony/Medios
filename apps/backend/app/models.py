@@ -254,6 +254,33 @@ class CreativeProductionPlan(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now)
 
 
+class BrandAsset(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    client_id: UUID = Field(foreign_key="client.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    label: str
+    filename: str
+    storage_path: str
+    content_type: str
+    size: int = 0
+    palette: str = ""
+    created_at: datetime = Field(default_factory=now)
+
+
+class CreativeVisualDraft(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    plan_id: UUID = Field(foreign_key="creativeproductionplan.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    title: str
+    prompt: str
+    storage_path: str = ""
+    content_type: str = "image/png"
+    status: str = Field(default="draft", index=True)
+    model_used: str = "OLIVA Art Director"
+    created_at: datetime = Field(default_factory=now)
+
+
 class ClientMemory(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     client_id: UUID = Field(foreign_key="client.id", unique=True, index=True)

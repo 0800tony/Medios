@@ -278,6 +278,19 @@ class CreativeProductionPlanOut(BaseModel):
     id: UUID; project_id: UUID; concept_id: UUID; content: dict[str, object]; status: str; model_used: str; created_at: datetime; updated_at: datetime
 
 
+class BrandAssetOut(BaseModel):
+    id: UUID; client_id: UUID; label: str; filename: str; content_type: str; size: int; palette: str; created_at: datetime
+
+
+class CreativeVisualOut(BaseModel):
+    id: UUID; project_id: UUID; plan_id: UUID; title: str; prompt: str; status: str; model_used: str; created_at: datetime
+
+
+class CreativeVisualGenerateIn(BaseModel):
+    title: str = Field(default="Boceto de dirección de arte", min_length=3, max_length=180)
+    focus: str = Field(default="", max_length=3000)
+
+
 class ClientMemoryIn(BaseModel):
     data: dict[str, str]
 
