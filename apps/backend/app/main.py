@@ -842,7 +842,7 @@ def get_strategy_decision(project_id: UUID, user: User = Depends(current_user), 
 
 @app.put("/api/projects/{project_id}/strategy/decision", response_model=StrategyDecisionOut)
 def save_strategy_decision(project_id: UUID, data: StrategyDecisionIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
-    owned_project(project_id, user, session)
+    project = owned_project(project_id, user, session)
     dossier = session.exec(select(StrategyDossier).where(StrategyDossier.project_id == project_id).order_by(StrategyDossier.version.desc())).first()
     if not dossier:
         raise HTTPException(404, "El proyecto todavía no tiene estrategia")
@@ -854,7 +854,13 @@ def save_strategy_decision(project_id: UUID, data: StrategyDecisionIn, user: Use
         decision.dossier_id = dossier.id; decision.route_key = data.route_key; decision.rationale = data.rationale.strip(); decision.launch_plan = data.launch_plan.strip(); decision.updated_at = now()
     else:
         decision = StrategyDecision(project_id=project_id, dossier_id=dossier.id, route_key=data.route_key, rationale=data.rationale.strip(), launch_plan=data.launch_plan.strip())
-    session.add(decision); session.commit(); session.refresh(decision)
+    decision.dossier_id = dossier.id
+    dossier.approval_status = "approved"; dossier.approval_notes = "Ruta de trabajo confirmada al guardar la decisión estratégica."; dossier.updated_at = now()
+    task = session.exec(select(ApprovalTask).where(ApprovalTask.kind == "strategy", ApprovalTask.entity_id == str(dossier.id), ApprovalTask.owner_id == user.id, ApprovalTask.status == "pending")).first()
+    if task:
+        task.status = "approved"; task.notes = dossier.approval_notes; task.resolved_at = now(); session.add(task)
+    project.workflow_stage = "ruta_seleccionada"; project.updated_at = now()
+    session.add(decision); session.add(dossier); session.add(project); session.commit(); session.refresh(decision)
     return decision
 def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)
 @app.get("/api/projects/{project_id}/creative",response_model=list[CreativeOut])

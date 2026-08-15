@@ -115,6 +115,8 @@ def test_mvp_flow():
         decision = client.put(f"/api/projects/{project_id}/strategy/decision", headers=headers, json={"route_key": "ruta_3", "rationale": "Primero hay que reducir la fricción comercial antes de ampliar la comunicación.", "launch_plan": "Pilotear la propuesta en dos plazas, medir rotación y ajustar antes de escalar."})
         assert decision.status_code == 200
         assert decision.json()["route_key"] == "ruta_3"
+        assert client.get(f"/api/projects/{project_id}/strategy", headers=headers).json()["approval_status"] == "approved"
+        assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "ruta_seleccionada"
         approval = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
         assert approval.json()["approval_status"] == "approved"
         creative = client.post(f"/api/projects/{project_id}/creative", headers=headers, data={"name": "Propuesta A", "medium": "Gráfica", "rationale": "Construye confianza"}, files={"file": ("pieza.txt", b"Titular y llamada a la accion", "text/plain")})
