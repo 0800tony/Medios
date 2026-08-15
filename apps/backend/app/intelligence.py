@@ -15,6 +15,16 @@ SCORE_KEYS=["estrategia","verdad_humana","rol_de_marca","apropiabilidad","origin
 
 AGENT_PROMPT="""Sos un agente especializado de OLIVA Intelligence. Trabajá con trazabilidad: separá hechos, inferencias, hipótesis y faltantes. No inventes resultados, antecedentes ni fuentes. La salida debe ser JSON válido, accionable y apto para aprobación humana. Si recibís lentes de referencia OLIVA, usalos como criterios de evaluación y no como estilos a imitar ni como atribución de ideas a personas."""
 CREATIVE_DIRECTION_PROMPT="""Sos OLIVA Creative Director. Trabajá exclusivamente sobre la estrategia y ruta aprobadas. Antes de proponer, controlá estrategia, marca y propiedad: si la idea serviría igual para cualquier marca, marcala débil y reformulala. Usá los lentes de referencia OLIVA como criterios, nunca como una imitación de una persona ni atribución de autoría. Devolvé JSON con desafio_creativo, efecto_buscado, base_aprobada, territorios (exactamente 3), recomendacion y sistema_creativo. Cada territorio debe incluir id, nombre, tension, idea_central, rol_de_marca, tipo_de_campana, estilo, tono, medios, propiedad, riesgos_y_cliches y control. No escribas piezas finales ni inventes evidencia."""
+
+
+def model_for_agent(settings, agent_key: str) -> str:
+    """Asignación explícita y auditable de modelo para cada agente OLIVA."""
+    if agent_key == "strategy":
+        return settings.openai_strategy_model
+    if agent_key == "creative_director":
+        return settings.openai_creative_model
+    return settings.openai_operations_model
+
 def sources_from_response(body:dict)->list[dict[str,str]]:
     sources=[];seen=set()
     for output in body.get("output",[]):
@@ -90,7 +100,7 @@ def run_agent(agent_key: str, project_name: str, brief: dict, strategy: dict, de
     if agent_key == "creative_director":
         payload["lentes_de_referencia_oliva"] = creative_reference_context()
     try:
-        text, model = responses_text({"model": s.openai_model, "instructions": AGENT_PROMPT, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        text, model = responses_text({"model": model_for_agent(s, agent_key), "instructions": AGENT_PROMPT, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
         data = json.loads(text or "{}")
         return data or local, model
     except Exception:
@@ -125,7 +135,7 @@ def generate_creative_concepts(project_name: str, brief: dict, strategy: dict, d
         return local, "OLIVA Creative Director — guía local"
     payload = {"proyecto": project_name, "brief": brief, "estrategia": strategy, "decision_aprobada": decision, "memoria_cliente": memory, "foco_adicional": instruction, "lentes_de_referencia_oliva": creative_reference_context(), "estructura_de_referencia": local}
     try:
-        text, model = responses_text({"model": s.openai_model, "instructions": CREATIVE_DIRECTION_PROMPT, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        text, model = responses_text({"model": s.openai_creative_model, "instructions": CREATIVE_DIRECTION_PROMPT, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
         data = json.loads(text or "{}")
         return data if isinstance(data.get("territorios"), list) and len(data["territorios"]) == 3 else local, model
     except Exception:
@@ -183,7 +193,7 @@ def generate_campaign_plan(project_name: str, brief: dict, decision: dict, board
     payload = {"proyecto": project_name, "brief": brief, "decision_aprobada": decision, "plataforma_creativa": board, "territorio_elegido": territory_id, "estructura_de_referencia": local}
     instructions = "Sos OLIVA Campaign Planner. Construí un plan editable de piezas, soportes y fases desde una plataforma creativa aprobada. Localizá para el territorio definido, pero no inventes datos de consumo de medios: marcá como hipótesis todo soporte no respaldado por una fuente. Cada medio debe tener un rol específico, indicador y cobertura realista. Devolvé JSON con piezas_creativas, soportes_de_medios, fases, criterio_de_medios y control_final."
     try:
-        text, model = responses_text({"model": s.openai_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        text, model = responses_text({"model": s.openai_operations_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
         data = json.loads(text or "{}")
         return data if isinstance(data.get("piezas_creativas"), list) and isinstance(data.get("soportes_de_medios"), list) else local, model
     except Exception:
@@ -260,7 +270,7 @@ def generate_production_proposals(project_name: str, brief: dict, board: dict, p
     payload = {"proyecto": project_name, "brief": brief, "plataforma": board, "plan_de_campana": plan, "estructura_de_referencia": local}
     instructions = "Sos OLIVA Creative Director en fase de producción. No pegues el brief ni describas una ejecución genérica: encontrá una idea central breve, una tensión, un giro y una frase rectora. Cada guion debe tener escenas concretas, audio/imagen cuando corresponda, remate y un motivo por el que sólo esta marca puede hacerlo. No imites a publicistas vivos; aplicá los lentes de criterio provistos. Antes de escribir, rechazá cualquier idea intercambiable, explicación larga o estética sin concepto. Desde una plataforma y plan aprobados, proponé guiones de trabajo editables para video, radio/audio, punto de venta y social. Cada propuesta debe incluir objetivo, público, medio/formato, vínculo con la idea, guion técnico, requisitos y control final. No inventes logos, precios, resultados, disponibilidad ni datos de consumo. Localizá sólo con datos presentes y marcá faltantes. Devolvé JSON con propuesta_de_campana, propuestas_de_produccion, faltantes_de_produccion y nota_del_director.\nLENTES CREATIVOS OLIVA:\n" + creative_reference_context()
     try:
-        text, model = responses_text({"model": s.openai_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        text, model = responses_text({"model": s.openai_creative_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
         data = json.loads(text or "{}")
         if isinstance(data.get("propuestas_de_produccion"), list):
             # El modelo puede enriquecer la propuesta, pero la interfaz necesita

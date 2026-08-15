@@ -55,6 +55,10 @@ Salud: `http://localhost:8000/health`
 
 La base y los documentos se guardan en volúmenes Docker. En modo local sin Docker, el backend usa SQLite si no se define `DATABASE_URL`.
 
+## Perfiles de IA
+
+OLIVA separa los modelos por el tipo de decisión: `OPENAI_STRATEGY_MODEL` y `OPENAI_CREATIVE_MODEL` se reservan para el diagnóstico, contrabrief, plataformas creativas y guiones; `OPENAI_OPERATIONS_MODEL` se usa en Briefing, Research, Learning y planificación de medios; `OPENAI_SEARCH_MODEL` para investigación web y `OPENAI_VISION_MODEL` para fotos y revisión de materiales. La configuración propuesta usa GPT-5.6 Sol para estrategia/creatividad y GPT-5.6 Terra para operaciones, web y visión.
+
 ## Desarrollo local
 
 Backend:

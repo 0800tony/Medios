@@ -9,6 +9,8 @@ from app.database import engine
 from app.main import app
 from app.link_reader import extract_page
 from app.ingestion import extract_email
+from app.config import Settings
+from app.intelligence import model_for_agent
 
 
 def setup_function():
@@ -25,6 +27,15 @@ def auth(client: TestClient):
 def test_health():
     with TestClient(app) as client:
         assert client.get("/health").json()["status"] == "ok"
+
+
+def test_agent_model_routing():
+    settings = Settings(openai_strategy_model="strategy", openai_creative_model="creative", openai_operations_model="operations")
+    assert model_for_agent(settings, "strategy") == "strategy"
+    assert model_for_agent(settings, "creative_director") == "creative"
+    assert model_for_agent(settings, "briefing") == "operations"
+    assert model_for_agent(settings, "research") == "operations"
+    assert model_for_agent(settings, "learning_curator") == "operations"
 
 
 def test_mvp_flow():

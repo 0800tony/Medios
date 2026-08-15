@@ -105,14 +105,14 @@ def analyze_dossier(project:Project,brief:dict[str,str],context:str,source_names
     s=get_settings()
     if not s.openai_api_key:return local_dossier(project,brief,source_names),"OLIVA Strategy — modo local"
     try:
-        inp=json.dumps({"proyecto":project.name,"objetivo":project.objective,"brief":brief,"fuentes":source_names,"contenido":context[:120000]},ensure_ascii=False);text,model=responses_text({"model":s.openai_model,"instructions":MASTER_PROMPT,"input":inp,"text":{"format":{"type":"json_object"}}});data=json.loads(text or "{}");fallback=local_dossier(project,brief,source_names);return {k:data.get(k,fallback[k]) for k in DOSSIER_KEYS},model
+        inp=json.dumps({"proyecto":project.name,"objetivo":project.objective,"brief":brief,"fuentes":source_names,"contenido":context[:120000]},ensure_ascii=False);text,model=responses_text({"model":s.openai_strategy_model,"instructions":MASTER_PROMPT,"input":inp,"text":{"format":{"type":"json_object"}}});data=json.loads(text or "{}");fallback=local_dossier(project,brief,source_names);return {k:data.get(k,fallback[k]) for k in DOSSIER_KEYS},model
     except Exception:
         return local_dossier(project,brief,source_names),"OLIVA Strategy — modo local (API no disponible)"
 def analyze(project:Project,document_text:str,client_context:str="")->dict[str,str]:
     s=get_settings();context=f"Proyecto: {project.name}\nCliente: {client_context}\nObjetivo: {project.objective}\nBrief: {project.brief}\nFuentes: {document_text[:70000]}"
     if s.openai_api_key:
         try:
-            response=OpenAI(api_key=s.openai_api_key).chat.completions.create(model=s.openai_model,response_format={"type":"json_object"},messages=[{"role":"system","content":SYSTEM_PROMPT},{"role":"user","content":context}]);data=json.loads(response.choices[0].message.content or "{}");data["model_used"]=s.openai_model;return data
+            response=OpenAI(api_key=s.openai_api_key).chat.completions.create(model=s.openai_strategy_model,response_format={"type":"json_object"},messages=[{"role":"system","content":SYSTEM_PROMPT},{"role":"user","content":context}]);data=json.loads(response.choices[0].message.content or "{}");data["model_used"]=s.openai_strategy_model;return data
         except Exception:
             pass
     has=bool(document_text.strip());return {"diagnosis":"El desafío declarado necesita validarse contra comportamiento, negocio y personas.","evidence":"Se incorporaron fuentes." if has else "La evidencia se limita al brief.","hypotheses":"Puede existir una brecha entre percepción interna y motivaciones reales.","contradictions":"Aún no hay evidencia suficiente para identificar contradicciones robustas.","strategic_question":"¿Qué comportamiento debe cambiar, en quién, y qué evidencia demuestra la barrera?","confidence":"media" if has else "baja","model_used":"OLIVA Strategy — modo local (API no disponible)" if s.openai_api_key else "OLIVA Strategy — modo local"}
