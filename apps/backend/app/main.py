@@ -788,7 +788,11 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
             session.add(existing)
         else:
             session.add(StrategyResult(project_id=project.id, **data))
-        stored_brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first();brief_data=json.loads(stored_brief.data_json) if stored_brief else {"request":project.brief,"communication_goal":project.objective};source_names=[d.filename for d in project.documents]+[e.title for e in project.evidence_items]+[f"Radar OLIVA: {i.title}" for i in selected_radar]+[f"Biblioteca OLIVA: {i.title}" for i in library_items]+[f"Aprendizaje OLIVA: {record.title}" for record in learned]+[f"Marco OLIVA: {reference['author']}" for reference in FOUNDATIONAL_REFERENCES];dossier_data,dossier_model=analyze_dossier(project,brief_data,full_context,source_names);previous=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first();dossier=StrategyDossier(project_id=project.id,version=previous.version+1 if previous else 1,content_json=json.dumps(dossier_data,ensure_ascii=False),model_used=dossier_model);session.add(dossier);session.flush();create_approval_task(session,user,project.id,"strategy",str(dossier.id),f"Aprobar estrategia · {project.name}","La estrategia integra evidencia del proyecto, memoria, aprendizajes confirmados y el marco metodológico OLIVA. Revisá las rutas antes de aprobar.")
+        stored_brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first();brief_data=json.loads(stored_brief.data_json) if stored_brief else {"request":project.brief,"communication_goal":project.objective};source_names=[d.filename for d in project.documents]+[e.title for e in project.evidence_items]+[f"Radar OLIVA: {i.title}" for i in selected_radar]+[f"Biblioteca OLIVA: {i.title}" for i in library_items]+[f"Aprendizaje OLIVA: {record.title}" for record in learned]+[f"Marco OLIVA: {reference['author']}" for reference in FOUNDATIONAL_REFERENCES];dossier_data,dossier_model=analyze_dossier(project,brief_data,full_context,source_names);previous=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first();dossier=StrategyDossier(project_id=project.id,version=previous.version+1 if previous else 1,content_json=json.dumps(dossier_data,ensure_ascii=False),model_used=dossier_model);session.add(dossier);session.flush()
+        decision=session.exec(select(StrategyDecision).where(StrategyDecision.project_id==project.id)).first()
+        if decision and dossier_data.get(decision.route_key):
+            decision.dossier_id=dossier.id; decision.updated_at=now(); session.add(decision)
+        create_approval_task(session,user,project.id,"strategy",str(dossier.id),f"Aprobar estrategia · {project.name}","La estrategia integra evidencia del proyecto, memoria, aprendizajes confirmados y el marco metodológico OLIVA. Revisá las rutas antes de aprobar.")
         project.status = ProjectStatus.completed
         project.workflow_stage = "estrategia"
     except Exception:
@@ -826,8 +830,13 @@ def get_strategy_decision(project_id: UUID, user: User = Depends(current_user), 
     owned_project(project_id, user, session)
     decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project_id)).first()
     dossier = session.exec(select(StrategyDossier).where(StrategyDossier.project_id == project_id).order_by(StrategyDossier.version.desc())).first()
-    if not decision or not dossier or decision.dossier_id != dossier.id:
+    if not decision or not dossier:
         raise HTTPException(404, "Todavía no se eligió una ruta estratégica")
+    if decision.dossier_id != dossier.id:
+        sections = json.loads(dossier.content_json)
+        if not sections.get(decision.route_key):
+            raise HTTPException(404, "La ruta elegida no existe en la estrategia vigente")
+        decision.dossier_id = dossier.id; decision.updated_at = now(); session.add(decision); session.commit(); session.refresh(decision)
     return decision
 
 

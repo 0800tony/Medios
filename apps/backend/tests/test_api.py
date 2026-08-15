@@ -150,6 +150,29 @@ def test_project_is_private():
         assert client.get("/api/projects", headers=headers).status_code == 200
 
 
+def test_completed_approximations_do_not_reappear_and_route_survives_new_version():
+    with TestClient(app) as client:
+        headers = auth(client)
+        created_client = client.post("/api/clients", headers=headers, json={"name": "Alfajores Demo", "industry": "Alimentos"}).json()
+        project = client.post("/api/projects", headers=headers, json={"name": "Flor de Panzada", "client_id": created_client["id"], "brief": "Lanzamiento de nueva marca", "objective": "Construir elección cotidiana"}).json()
+        project_id = project["id"]
+        brief_data = {
+            "request": "Lanzar una marca nueva de alfajores con un precio superior al industrial.", "product": "Alfajor artesanal individual", "commercial_goal": "Crecer con distribución regional", "audience": "Adolescentes y jóvenes", "motivations": "Compra cotidiana en recreo y merienda", "positioning": "Alfajor joven del litoral", "competitors": "Industriales y artesanales", "brand_architecture": "La nueva marca es independiente; El Nogal solo respalda su origen.", "consumer_behavior_evidence": "Comercios observan compra en recreo, viaje y merienda.", "price_value_evidence": "El industrial vale 650-800 y la propuesta 1000; se probará en puntos iniciales.", "capacity_distribution_evidence": "La fábrica tiene turnos ociosos y capacidad hasta 250.000 unidades; falta ampliar logística.", "audience_priority_evidence": "Niños y adolescentes son la primera audiencia por envase, precio y ocasión.", "competitive_product_evidence": "El envase compite bien; la diferencia de precio debe aprenderse en el piloto.",
+        }
+        assert client.put(f"/api/projects/{project_id}/brief", headers=headers, json={"data": brief_data}).status_code == 200
+        first = client.post(f"/api/projects/{project_id}/analyze", headers=headers)
+        assert first.status_code == 200
+        dossier = client.get(f"/api/projects/{project_id}/strategy", headers=headers).json()
+        assert dossier["sections"]["que_no_sabemos"] == []
+        saved = client.put(f"/api/projects/{project_id}/strategy/decision", headers=headers, json={"route_key": "ruta_1", "rationale": "Reencuadrar el artesanal como elección cotidiana.", "launch_plan": "Pilotear en kioscos de Concordia y medir rotación."})
+        assert saved.status_code == 200
+        assert client.post(f"/api/projects/{project_id}/analyze", headers=headers).status_code == 200
+        current = client.get(f"/api/projects/{project_id}/strategy/decision", headers=headers)
+        assert current.status_code == 200
+        assert current.json()["route_key"] == "ruta_1"
+        assert current.json()["rationale"] == "Reencuadrar el artesanal como elección cotidiana."
+
+
 def test_memory_learning_agents_and_approvals():
     with TestClient(app) as client:
         headers = auth(client)
