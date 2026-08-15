@@ -84,8 +84,8 @@ export default function Creative({ params }: { params: { id: string } }) {
     catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }
   async function uploadBrand(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!project) return; setBusy(true); setError(""); setSaved("");
-    try { const asset = await request<BrandAsset>(`/api/clients/${project.client_id}/brand-assets`, { method: "POST", body: new FormData(event.currentTarget) }); setBrandAssets(current => [asset, ...current]); event.currentTarget.reset(); setSaved("Logo y paleta guardados en la identidad del cliente. OLIVA los tendrá disponibles para los próximos bocetos."); }
+    event.preventDefault(); if (!project) return; const form = event.currentTarget; setBusy(true); setError(""); setSaved("");
+    try { const asset = await request<BrandAsset>(`/api/clients/${project.client_id}/brand-assets`, { method: "POST", body: new FormData(form) }); setBrandAssets(current => [asset, ...current]); form.reset(); setSaved("Logo y paleta guardados en la identidad del cliente. OLIVA los tendrá disponibles para los próximos bocetos."); }
     catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }
   async function generateVisual(title = "Boceto OLIVA de campaña", focus = visualFocus) {
@@ -134,8 +134,8 @@ export default function Creative({ params }: { params: { id: string } }) {
     } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    try { await request(`/api/projects/${params.id}/creative`, { method: "POST", body: new FormData(event.currentTarget) }); event.currentTarget.reset(); setSaved("Material cargado y revisado contra la plataforma creativa elegida."); await load(); }
+    event.preventDefault(); const form = event.currentTarget; setBusy(true); setError("");
+    try { await request(`/api/projects/${params.id}/creative`, { method: "POST", body: new FormData(form) }); form.reset(); setSaved("Material cargado y revisado contra la plataforma creativa elegida."); await load(); }
     catch (error) { setError((error as Error).message); } finally { setBusy(false); }
   }
 
