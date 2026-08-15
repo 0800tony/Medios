@@ -18,7 +18,7 @@ from .link_reader import read_link
 from .models import AgentRun, ApprovalTask, Client, ClientMemory, CreativeConcept, CreativeProductionPlan, CreativeSubmission, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, StrategyDecision, StrategyDossier, StrategyResult, User, now
 from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
-from .intelligence import evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, project_web_research, run_agent
+from .intelligence import evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
 
 settings = get_settings()
@@ -928,13 +928,22 @@ def creative_plan_output(plan: CreativeProductionPlan) -> CreativeProductionPlan
 def list_creative_plans(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     project = owned_project(project_id, user, session)
     selected = session.exec(select(CreativeConcept).where(CreativeConcept.project_id == project.id, CreativeConcept.owner_id == user.id, CreativeConcept.status == "selected").order_by(CreativeConcept.updated_at.desc())).first()
-    if selected and not session.exec(select(CreativeProductionPlan).where(CreativeProductionPlan.concept_id == selected.id)).first():
+    plan = session.exec(select(CreativeProductionPlan).where(CreativeProductionPlan.concept_id == selected.id)).first() if selected else None
+    if selected and not plan:
         _, decision = approved_creative_context(project, user, session)
         stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
         brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective, "territory": project.territory}
         board = json.loads(selected.content_json)
         content, model = generate_campaign_plan(project.name, brief, {"route_key": decision.route_key, "rationale": decision.rationale, "launch_plan": decision.launch_plan}, board, str(board.get("selected_territory_id", "")))
-        session.add(CreativeProductionPlan(project_id=project.id, concept_id=selected.id, owner_id=user.id, content_json=json.dumps(content, ensure_ascii=False), model_used=model)); session.commit()
+        plan = CreativeProductionPlan(project_id=project.id, concept_id=selected.id, owner_id=user.id, content_json=json.dumps(content, ensure_ascii=False), model_used=model)
+        session.add(plan); session.commit()
+    if selected and plan and plan.status == "approved":
+        content = json.loads(plan.content_json)
+        if not content.get("propuestas_de_produccion"):
+            stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
+            brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective, "territory": project.territory}
+            production, model = generate_production_proposals(project.name, brief, json.loads(selected.content_json), content)
+            content.update(production); plan.content_json = json.dumps(content, ensure_ascii=False); plan.model_used = model; plan.updated_at = now(); session.add(plan); session.commit()
     plans = session.exec(select(CreativeProductionPlan).where(CreativeProductionPlan.project_id == project_id, CreativeProductionPlan.owner_id == user.id).order_by(CreativeProductionPlan.updated_at.desc())).all()
     return [creative_plan_output(plan) for plan in plans]
 
@@ -945,9 +954,18 @@ def update_creative_plan(project_id: UUID, plan_id: UUID, data: CreativeProducti
     plan = session.get(CreativeProductionPlan, plan_id)
     if not plan or plan.project_id != project.id or plan.owner_id != user.id:
         raise HTTPException(404, "Plan de campaña no encontrado")
-    plan.content_json = json.dumps(data.content, ensure_ascii=False); plan.status = data.status; plan.updated_at = now(); session.add(plan)
+    content = dict(data.content)
     if data.status == "approved":
+        if not content.get("propuestas_de_produccion"):
+            concept = session.get(CreativeConcept, plan.concept_id)
+            if not concept or concept.project_id != project.id or concept.owner_id != user.id:
+                raise HTTPException(409, "No se encontró la plataforma creativa que sustenta este plan")
+            stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
+            brief = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective, "territory": project.territory}
+            production, model = generate_production_proposals(project.name, brief, json.loads(concept.content_json), content)
+            content.update(production); plan.model_used = model
         project.workflow_stage = "produccion_creativa"; project.updated_at = now(); session.add(project)
+    plan.content_json = json.dumps(content, ensure_ascii=False); plan.status = data.status; plan.updated_at = now(); session.add(plan)
     session.commit(); session.refresh(plan)
     return creative_plan_output(plan)
 

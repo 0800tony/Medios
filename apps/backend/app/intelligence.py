@@ -185,6 +185,53 @@ def generate_campaign_plan(project_name: str, brief: dict, decision: dict, board
         return data if isinstance(data.get("piezas_creativas"), list) and isinstance(data.get("soportes_de_medios"), list) else local, model
     except Exception:
         return local, "OLIVA Campaign Planner — guía local (API no disponible)"
+
+
+def local_production_proposals(project_name: str, brief: dict, board: dict, plan: dict) -> dict:
+    """Turn an approved plan into editable executions, not final production assets."""
+    selected_id = board.get("selected_territory_id", "") if isinstance(board, dict) else ""
+    territories = board.get("territorios", []) if isinstance(board, dict) else []
+    territory = next((item for item in territories if item.get("id") == selected_id), territories[0] if territories else {})
+    base = plan.get("base_aprobada", {}) if isinstance(plan, dict) else {}
+    product = brief.get("product") or project_name
+    audience = brief.get("audience") or "el público prioritario"
+    zone = base.get("territorio") or brief.get("territory") or "la plaza definida"
+    idea = base.get("idea_central") or territory.get("idea_central") or "la idea central aprobada"
+    tone = territory.get("tono") or brief.get("brand_tone") or "claro, cercano y específico"
+    proof = brief.get("proof") or "la prueba real que la marca pueda sostener"
+    return {
+        "propuesta_de_campana": {
+            "nombre": territory.get("nombre", "Campaña en desarrollo"),
+            "idea_rectora": idea,
+            "publico": audience,
+            "territorio": zone,
+            "promesa_de_trabajo": f"Hacer que {product} sea una elección concreta para {audience}, usando {proof} sin promesas que la marca no pueda verificar.",
+            "tono_y_sistema": f"{tone}. Mantener una sola idea, producto/proof visibles y adaptaciones locales sin estereotipos.",
+        },
+        "propuestas_de_produccion": [
+            {"id": "guion_video_15", "pieza": "Video vertical de lanzamiento", "medio": "Social y pantallas de punto de venta", "duracion_formato": "15–20 s · vertical 9:16", "objetivo": "Abrir la nueva ocasión, mostrar la prueba y terminar con una acción concreta.", "propuesta": f"Una situación cotidiana reconocible en {zone} se interrumpe por una pregunta que reencuadra la categoría. {product} entra como respuesta demostrable, no como decoración.", "guion": f"0–3 s: situación/gesto de {audience} y pregunta en pantalla. 3–9 s: producto en uso o prueba real ({proof}). 9–14 s: la idea central: «{idea}». 14–20 s: marca, punto/acción disponible y cierre breve.", "produccion": "Definir locación real, producto final, packaging, disponibilidad y versión sin audio. Evitar imágenes genéricas de categoría.", "control": "¿Se entiende la ocasión, la prueba y el siguiente paso sin depender de una estética atractiva?"},
+            {"id": "guion_radio_30", "pieza": "Cuña de radio local", "medio": "Radio y audio de cercanía", "duracion_formato": "20–30 s · audio", "objetivo": "Generar frecuencia, una escena recordable y una invitación a encontrar el producto.", "propuesta": f"Una mini escena sonora de rutina en {zone}; el sonido y la voz llevan la idea antes de nombrar la marca.", "guion": f"0–4 s: ambiente de una ocasión cotidiana (sin caricaturizar la zona). 4–12 s: voz/diálogo plantea la tensión. 12–20 s: resolución con {product} y prueba: {proof}. 20–30 s: idea «{idea}», marca y llamado a consultar o encontrarlo en puntos adheridos.", "produccion": "Definir voz, acento sin estereotipo, música original/licenciada, efectos y menciones comerciales disponibles por plaza.", "control": "¿La marca y la idea se recuerdan sólo al escuchar? ¿El llamado coincide con la distribución real?"},
+            {"id": "guion_pdv", "pieza": "Exhibición de elección", "medio": "Góndola, mostrador y material comercial", "duracion_formato": "Cartel / stoppers / exhibidor", "objetivo": "Resolver la decisión en segundos donde el producto está realmente disponible.", "propuesta": f"Una lectura de tres capas: pregunta de ocasión, producto/prueba y acción de compra. El material no intenta contar toda la campaña.", "guion": f"Lectura 1 (2 s): pregunta o frase que abre «{idea}». Lectura 2 (3 s): foto/pack real de {product} + prueba verificable: {proof}. Lectura 3 (1 s): marca y acción: probalo / pedilo / encontralo aquí, según canal.", "produccion": "Confirmar medidas por comercio, materiales, precio si se comunica, stock, exhibición y responsables de instalación/reposición.", "control": "¿Se lee a distancia y mantiene una sola razón para elegir?"},
+            {"id": "guion_social_local", "pieza": "Serie social de cercanía", "medio": "Historias, reels y cuentas locales", "duracion_formato": "3–5 variantes de 6–15 s", "objetivo": "Dar continuidad a la plataforma y aprender qué ocasión o prueba moviliza mejor por plaza.", "propuesta": "Variantes de una misma estructura: ocasión real, prueba/producto, respuesta de marca y acción local. Cambia la situación; no cambia la idea rectora.", "guion": f"Variante A: ocasión cotidiana + {product}. Variante B: prueba detrás del producto ({proof}). Variante C: recomendación o punto de venta, solo si está confirmado. Cierre común: «{idea}» + marca.", "produccion": "Preparar textos, versiones con subtítulos, material de producto, permisos de personas/locaciones y una matriz de variantes por localidad.", "control": "¿Las variantes se sienten parte de la misma campaña y no publicaciones aisladas?"},
+        ],
+        "faltantes_de_produccion": ["Producto, packaging y logos finales", "Lista de puntos de venta y cobertura confirmada", "Restricciones legales/promocionales", "Presupuesto, responsables y calendario de producción", "Activos visuales y sonoros aprobados de la marca"],
+        "nota_del_director": "Son guiones de trabajo editables, no piezas finales. Ajustalos antes de producir y cargá luego los bocetos o materiales resultantes para revisión.",
+    }
+
+
+def generate_production_proposals(project_name: str, brief: dict, board: dict, plan: dict) -> tuple[dict, str]:
+    local = local_production_proposals(project_name, brief, board, plan)
+    s = get_settings()
+    if not s.openai_api_key:
+        return local, "OLIVA Creative Director — producción guiada local"
+    payload = {"proyecto": project_name, "brief": brief, "plataforma": board, "plan_de_campana": plan, "estructura_de_referencia": local}
+    instructions = "Sos OLIVA Creative Director en fase de producción. Desde una plataforma y plan aprobados, proponé guiones de trabajo editables para video, radio/audio, punto de venta y social. Cada propuesta debe incluir objetivo, público, medio/formato, vínculo con la idea, guion técnico, requisitos y control final. No inventes logos, precios, resultados, disponibilidad ni datos de consumo. Localizá sólo con datos presentes y marcá faltantes. Devolvé JSON con propuesta_de_campana, propuestas_de_produccion, faltantes_de_produccion y nota_del_director."
+    try:
+        text, model = responses_text({"model": s.openai_model, "instructions": instructions, "input": json.dumps(payload, ensure_ascii=False), "text": {"format": {"type": "json_object"}}})
+        data = json.loads(text or "{}")
+        return data if isinstance(data.get("propuestas_de_produccion"), list) else local, model
+    except Exception:
+        return local, "OLIVA Creative Director — producción guiada local (API no disponible)"
 CREATIVE_PROMPT="""Sos el comité creativo de OLIVA. Evaluá contra la estrategia aprobada y contexto de marca. No premies estética sin estrategia. Aplicá sustitución de logo, cambio de categoría y eliminación de estética. Puntúa 0-5 estrategia, verdad_humana, rol_de_marca, apropiabilidad, originalidad, claridad, fertilidad, coherencia, adecuacion_al_medio, viabilidad. Las primeras críticas son estrategia, coherencia y apropiabilidad. Respondé SOLO JSON: verdict (aprobable/revisar/no_alineada), scores y evaluation concreta."""
 def evaluate_creative(path:Path,content_type:str,name:str,medium:str,rationale:str,strategy:dict,brand_context:str)->dict:
     s=get_settings()
