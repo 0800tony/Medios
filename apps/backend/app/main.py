@@ -18,7 +18,7 @@ from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, i
 from .link_reader import read_link
 from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeAnnotation, CreativeConcept, CreativeNote, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, MarketWatch, MeasurementRecord, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, ProjectTask, RadarLinkStatus, ResearchSource, StrategyDecision, StrategyDossier, StrategyResult, User, now
 from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeAnnotationIn, CreativeAnnotationOut, CreativeAnnotationUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeNoteIn, CreativeNoteOut, CreativeNoteUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeTableIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, MarketWatchIn, MarketWatchOut, MarketWatchUpdateIn, MeasurementIn, MeasurementOut, ProductionPackageOut, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectTaskIn, ProjectTaskOut, ProjectTaskUpdateIn, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, ResearchSourceIn, ResearchSourceOut, ResearchSourceUpdateIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
-from .strategy import analyze, analyze_dossier
+from .strategy import analyze, analyze_dossier, local_dossier
 from .intelligence import creative_table, evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, CREATIVE_REFERENCE_LENSES, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
 from .research_sources import DEFAULT_RESEARCH_SOURCES, source_payload
@@ -1024,6 +1024,33 @@ def get_strategy(project_id:UUID,user:User=Depends(current_user),session:Session
     owned_project(project_id,user,session);d=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project_id).order_by(StrategyDossier.version.desc())).first()
     if not d:raise HTTPException(404,"El proyecto todavía no tiene un contrabrief estratégico")
     return dossier_output(d)
+
+@app.post("/api/projects/{project_id}/strategy/expand-routes", response_model=DossierOut)
+def expand_strategy_routes(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    """Adds deeper alternatives without recalculating or replacing the existing strategic route."""
+    project = owned_project(project_id, user, session)
+    current = session.exec(select(StrategyDossier).where(StrategyDossier.project_id == project_id).order_by(StrategyDossier.version.desc())).first()
+    if not current:
+        raise HTTPException(404, "El proyecto todavía no tiene estrategia")
+    current_sections = json.loads(current.content_json)
+    if all(current_sections.get(f"ruta_{number}") for number in range(1, 8)):
+        return dossier_output(current)
+    stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
+    brief_data = json.loads(stored_brief.data_json) if stored_brief else {"request": project.brief, "communication_goal": project.objective}
+    source_names = [document.filename for document in project.documents] + [item.title for item in project.evidence_items]
+    expanded = local_dossier(project, brief_data, source_names)
+    for number in range(4, 8):
+        current_sections[f"ruta_{number}"] = expanded[f"ruta_{number}"]
+    current_sections["comparacion_de_rutas"] = expanded["comparacion_de_rutas"]
+    next_version = StrategyDossier(project_id=project.id, version=current.version + 1, content_json=json.dumps(current_sections, ensure_ascii=False), model_used=f"{current.model_used} · rutas ampliadas")
+    session.add(next_version); session.flush()
+    decision = session.exec(select(StrategyDecision).where(StrategyDecision.project_id == project.id)).first()
+    if decision and current_sections.get(decision.route_key):
+        decision.dossier_id = next_version.id; decision.updated_at = now(); session.add(decision)
+        next_version.approval_status = current.approval_status
+        next_version.approval_notes = f"{current.approval_notes} Alternativas ampliadas sin alterar la ruta elegida.".strip()
+    session.add(next_version); session.commit(); session.refresh(next_version)
+    return dossier_output(next_version)
 @app.patch("/api/projects/{project_id}/strategy/approval",response_model=DossierOut)
 def approve_strategy(project_id:UUID,data:ApprovalIn,user:User=Depends(current_user),session:Session=Depends(get_session)):
     owned_project(project_id,user,session)

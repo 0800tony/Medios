@@ -264,7 +264,7 @@ class ApprovalIn(BaseModel):
 class DossierOut(BaseModel):
     id: UUID; version: int; sections: dict[str, object]; approval_status: str; approval_notes: str; model_used: str; created_at: datetime
 class StrategyDecisionIn(BaseModel):
-    route_key: str = Field(pattern="^ruta_[123]$")
+    route_key: str = Field(pattern="^ruta_[1-7]$")
     rationale: str = Field(min_length=12, max_length=10000)
     launch_plan: str = Field(min_length=12, max_length=10000)
 class StrategyDecisionOut(BaseModel):

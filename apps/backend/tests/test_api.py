@@ -139,7 +139,8 @@ def test_mvp_flow():
         assert result.json()["result"]["strategic_question"]
         dossier = client.get(f"/api/projects/{project_id}/strategy", headers=headers)
         assert dossier.status_code == 200
-        assert len(dossier.json()["sections"]) == 32
+        assert len(dossier.json()["sections"]) == 36
+        assert dossier.json()["sections"]["ruta_4"]["nombre"] == "Actualizar el legado para habilitar el presente"
         critical_gaps = dossier.json()["sections"]["que_no_sabemos"]
         assert len(critical_gaps) >= 3
         assert {"vacio", "por_que_importa", "pregunta", "evidencia_necesaria"}.issubset(critical_gaps[0])
@@ -150,6 +151,7 @@ def test_mvp_flow():
         assert decision.status_code == 200
         assert decision.json()["route_key"] == "ruta_3"
         assert client.get(f"/api/projects/{project_id}/strategy", headers=headers).json()["approval_status"] == "approved"
+        assert client.post(f"/api/projects/{project_id}/strategy/expand-routes", headers=headers).json()["sections"]["ruta_7"]["nombre"] == "Redefinir el valor para ganar elección"
         assert client.get(f"/api/projects/{project_id}", headers=headers).json()["workflow_stage"] == "ruta_seleccionada"
         approval = client.patch(f"/api/projects/{project_id}/strategy/approval", headers=headers, json={"status": "approved", "notes": "Aprobada por dirección"})
         assert approval.json()["approval_status"] == "approved"
