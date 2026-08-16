@@ -6,7 +6,7 @@ import Nav from "@/components/Nav";
 import ProjectFlow from "@/components/ProjectFlow";
 import { Dossier, Project, StrategyDecision, request, requestBlob, saveBlob } from "@/lib/api";
 
-const order = ["resumen_ejecutivo", "pedido_original", "interpretacion_del_pedido", "fuentes_y_calidad", "que_sabemos", "que_creemos", "que_no_sabemos", "diagnostico_del_problema", "objetivos_diferenciados", "comportamiento_a_cambiar", "categoria_y_competencia", "antecedentes_oliva", "audiencias", "barreras", "tension_humana", "insight", "oportunidad_estrategica", "rol_de_marca", "promesa", "razones_para_creer", "tono", "canales_y_contextos", "ruta_1", "ruta_2", "ruta_3", "ruta_4", "ruta_5", "ruta_6", "ruta_7", "comparacion_de_rutas", "riesgos", "indicadores", "preguntas_indispensables", "preguntas_importantes", "preguntas_deseables", "proxima_decision"];
+const order = ["resumen_ejecutivo", "pedido_original", "interpretacion_del_pedido", "fuentes_y_calidad", "que_sabemos", "que_creemos", "que_no_sabemos", "diagnostico_del_problema", "objetivos_diferenciados", "ejes_de_comunicacion", "comportamiento_a_cambiar", "categoria_y_competencia", "antecedentes_oliva", "audiencias", "barreras", "tension_humana", "insight", "oportunidad_estrategica", "rol_de_marca", "promesa", "razones_para_creer", "tono", "canales_y_contextos", "ruta_1", "ruta_2", "ruta_3", "ruta_4", "ruta_5", "ruta_6", "ruta_7", "comparacion_de_rutas", "riesgos", "indicadores", "preguntas_indispensables", "preguntas_importantes", "preguntas_deseables", "proxima_decision"];
 const criticalFields: Record<string, string> = {
   "Arquitectura y relación entre las marcas": "brand_architecture",
   "Valor percibido y aceptación del precio": "price_value_evidence",

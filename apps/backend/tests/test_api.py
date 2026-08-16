@@ -139,7 +139,8 @@ def test_mvp_flow():
         assert result.json()["result"]["strategic_question"]
         dossier = client.get(f"/api/projects/{project_id}/strategy", headers=headers)
         assert dossier.status_code == 200
-        assert len(dossier.json()["sections"]) == 36
+        assert len(dossier.json()["sections"]) == 37
+        assert len(dossier.json()["sections"]["ejes_de_comunicacion"]) == 13
         assert dossier.json()["sections"]["ruta_4"]["nombre"] == "Actualizar el legado para habilitar el presente"
         critical_gaps = dossier.json()["sections"]["que_no_sabemos"]
         assert len(critical_gaps) >= 3
