@@ -346,6 +346,76 @@ class ProductionPackageOut(BaseModel):
     handoff: list[str]
 
 
+class ProjectTaskIn(BaseModel):
+    title: str = Field(min_length=3, max_length=250)
+    description: str = Field(default="", max_length=5000)
+    assignee: str = Field(default="", max_length=160)
+    stage: str = Field(default="estrategia", max_length=80)
+    priority: str = Field(default="media", pattern="^(alta|media|baja)$")
+    due_date: str = Field(default="", max_length=40)
+
+
+class ProjectTaskUpdateIn(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=3, max_length=250)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    assignee: Optional[str] = Field(default=None, max_length=160)
+    stage: Optional[str] = Field(default=None, max_length=80)
+    priority: Optional[str] = Field(default=None, pattern="^(alta|media|baja)$")
+    due_date: Optional[str] = Field(default=None, max_length=40)
+    status: Optional[str] = Field(default=None, pattern="^(pending|in_progress|blocked|done)$")
+
+
+class ProjectTaskOut(BaseModel):
+    id: UUID; project_id: UUID; title: str; description: str; assignee: str; stage: str; status: str; priority: str; due_date: str; created_at: datetime; updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreativeAnnotationIn(BaseModel):
+    comment: str = Field(min_length=3, max_length=5000)
+    author: str = Field(default="Equipo OLIVA", min_length=2, max_length=160)
+    x: float = Field(default=50, ge=0, le=100)
+    y: float = Field(default=50, ge=0, le=100)
+
+
+class CreativeAnnotationUpdateIn(BaseModel):
+    status: str = Field(pattern="^(open|resolved|dismissed)$")
+
+
+class CreativeAnnotationOut(BaseModel):
+    id: UUID; creative_submission_id: UUID; project_id: UUID; author: str; comment: str; x: float; y: float; status: str; created_at: datetime; updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeasurementIn(BaseModel):
+    metric: str = Field(min_length=2, max_length=180)
+    value: str = Field(min_length=1, max_length=120)
+    baseline: str = Field(default="", max_length=120)
+    target: str = Field(default="", max_length=120)
+    period: str = Field(default="", max_length=160)
+    source: str = Field(default="", max_length=250)
+    notes: str = Field(default="", max_length=5000)
+
+
+class MeasurementOut(MeasurementIn):
+    id: UUID; project_id: UUID; created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MarketWatchIn(BaseModel):
+    name: str = Field(min_length=3, max_length=180)
+    query: str = Field(min_length=3, max_length=1000)
+    kind: str = Field(default="competitor", pattern="^(competitor|category|source_monitor)$")
+    client_id: Optional[UUID] = None
+
+
+class MarketWatchUpdateIn(BaseModel):
+    active: Optional[bool] = None
+
+
+class MarketWatchOut(BaseModel):
+    id: UUID; client_id: Optional[UUID]; name: str; query: str; kind: str; active: bool; last_summary: str; last_sources: list[dict[str, str]]; last_checked_at: Optional[datetime]; created_at: datetime
+
+
 class ClientMemoryIn(BaseModel):
     data: dict[str, str]
 

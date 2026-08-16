@@ -311,6 +311,63 @@ class CreativeNote(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=now)
 
 
+class ProjectTask(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    title: str
+    description: str = ""
+    assignee: str = ""
+    stage: str = Field(default="estrategia", index=True)
+    status: str = Field(default="pending", index=True)
+    priority: str = Field(default="media", index=True)
+    due_date: str = ""
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class CreativeAnnotation(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    creative_submission_id: UUID = Field(foreign_key="creativesubmission.id", index=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    author: str = "Equipo OLIVA"
+    comment: str
+    x: float = 50
+    y: float = 50
+    status: str = Field(default="open", index=True)
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class MeasurementRecord(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    metric: str
+    value: str
+    baseline: str = ""
+    target: str = ""
+    period: str = ""
+    source: str = ""
+    notes: str = ""
+    created_at: datetime = Field(default_factory=now)
+
+
+class MarketWatch(SQLModel, table=True):
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    owner_id: UUID = Field(foreign_key="user.id", index=True)
+    client_id: Optional[UUID] = Field(default=None, foreign_key="client.id", index=True)
+    name: str
+    query: str
+    kind: str = Field(default="competitor", index=True)
+    active: bool = Field(default=True, index=True)
+    last_summary: str = ""
+    last_sources_json: str = "[]"
+    last_checked_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=now)
+
+
 class ClientMemory(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     client_id: UUID = Field(foreign_key="client.id", unique=True, index=True)

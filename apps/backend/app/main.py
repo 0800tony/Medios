@@ -16,8 +16,8 @@ from .documents import ALLOWED, MAX_SIZE, extract_text, safe_name
 from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_SIZE, extract_email, format_email, transcribe_audio
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
-from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeConcept, CreativeNote, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, RadarLinkStatus, ResearchSource, StrategyDecision, StrategyDossier, StrategyResult, User, now
-from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeNoteIn, CreativeNoteOut, CreativeNoteUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeTableIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, ProductionPackageOut, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, ResearchSourceIn, ResearchSourceOut, ResearchSourceUpdateIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
+from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeAnnotation, CreativeConcept, CreativeNote, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, MarketWatch, MeasurementRecord, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, ProjectTask, RadarLinkStatus, ResearchSource, StrategyDecision, StrategyDossier, StrategyResult, User, now
+from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeAnnotationIn, CreativeAnnotationOut, CreativeAnnotationUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeNoteIn, CreativeNoteOut, CreativeNoteUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeTableIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, MarketWatchIn, MarketWatchOut, MarketWatchUpdateIn, MeasurementIn, MeasurementOut, ProductionPackageOut, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectTaskIn, ProjectTaskOut, ProjectTaskUpdateIn, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, ResearchSourceIn, ResearchSourceOut, ResearchSourceUpdateIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier
 from .intelligence import creative_table, evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, CREATIVE_REFERENCE_LENSES, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
@@ -469,6 +469,49 @@ def delete_research_source(source_id: UUID, user: User = Depends(current_user), 
     session.commit()
 
 
+def watch_output(watch: MarketWatch) -> MarketWatchOut:
+    return MarketWatchOut(id=watch.id, client_id=watch.client_id, name=watch.name, query=watch.query, kind=watch.kind, active=watch.active, last_summary=watch.last_summary, last_sources=json.loads(watch.last_sources_json), last_checked_at=watch.last_checked_at, created_at=watch.created_at)
+
+
+@app.get("/api/watches", response_model=list[MarketWatchOut])
+def list_watches(user: User = Depends(current_user), session: Session = Depends(get_session)):
+    return [watch_output(watch) for watch in session.exec(select(MarketWatch).where(MarketWatch.owner_id == user.id).order_by(MarketWatch.last_checked_at.desc())).all()]
+
+
+@app.post("/api/watches", response_model=MarketWatchOut, status_code=201)
+def create_watch(data: MarketWatchIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    if data.client_id: owned_client(data.client_id, user, session)
+    watch = MarketWatch(owner_id=user.id, **data.model_dump())
+    session.add(watch); session.commit(); session.refresh(watch)
+    return watch_output(watch)
+
+
+@app.post("/api/watches/{watch_id}/run", response_model=MarketWatchOut)
+def run_watch(watch_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    watch = session.get(MarketWatch, watch_id)
+    if not watch or watch.owner_id != user.id: raise HTTPException(404, "Monitor no encontrado")
+    summary, sources, _ = project_web_research(watch.name, "Inteligencia competitiva y de categoría", watch.query, active_research_domains(user, session))
+    if not settings.openai_api_key: raise HTTPException(409, summary)
+    watch.last_summary = summary; watch.last_sources_json = json.dumps(sources, ensure_ascii=False); watch.last_checked_at = now(); session.add(watch); session.commit(); session.refresh(watch)
+    return watch_output(watch)
+
+
+@app.patch("/api/watches/{watch_id}", response_model=MarketWatchOut)
+def update_watch(watch_id: UUID, data: MarketWatchUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    watch = session.get(MarketWatch, watch_id)
+    if not watch or watch.owner_id != user.id: raise HTTPException(404, "Monitor no encontrado")
+    if data.active is not None: watch.active = data.active
+    session.add(watch); session.commit(); session.refresh(watch); return watch_output(watch)
+
+
+@app.get("/api/governance")
+def governance(user: User = Depends(current_user), session: Session = Depends(get_session)):
+    agent_runs = session.exec(select(AgentRun).where(AgentRun.owner_id == user.id)).all()
+    visuals = session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.owner_id == user.id)).all()
+    learning = session.exec(select(LearningRecord).where(LearningRecord.owner_id == user.id, LearningRecord.status == "approved")).all()
+    return {"models": {"estrategia": settings.openai_strategy_model, "creatividad": settings.openai_creative_model, "operaciones": settings.openai_operations_model, "busqueda": settings.openai_search_model, "vision": settings.openai_vision_model}, "audit": {"agentes_ejecutados": len(agent_runs), "bocetos_generados": len(visuals), "aprendizajes_aprobados": len(learning)}, "controls": ["Cada salida informa el modelo usado y permanece trazable en el proyecto.", "Los aprendizajes pasan por aprobación humana antes de reutilizarse.", "Las fuentes externas se guardan con enlace y no se confunden con evidencia del cliente.", "La IA no puede aprobar estrategia, pieza o resultado en nombre del equipo."], "api_configured": bool(settings.openai_api_key)}
+
+
 @app.get("/api/learning", response_model=list[LearningRecordOut])
 def list_learning(project_id: UUID | None = None, client_id: UUID | None = None, status_filter: str = Query(default=""), user: User = Depends(current_user), session: Session = Depends(get_session)):
     records = session.exec(select(LearningRecord).where(LearningRecord.owner_id == user.id).order_by(LearningRecord.updated_at.desc())).all()
@@ -496,6 +539,64 @@ def owned_project(project_id: UUID, user: User, session: Session) -> Project:
     if not project:
         raise HTTPException(404, "Proyecto no encontrado")
     return project
+
+
+def task_output(task: ProjectTask) -> ProjectTaskOut:
+    return ProjectTaskOut.model_validate(task)
+
+
+@app.get("/api/projects/{project_id}/tasks", response_model=list[ProjectTaskOut])
+def list_project_tasks(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    tasks = session.exec(select(ProjectTask).where(ProjectTask.project_id == project_id, ProjectTask.owner_id == user.id).order_by(ProjectTask.status, ProjectTask.created_at.desc())).all()
+    return [task_output(task) for task in tasks]
+
+
+@app.post("/api/projects/{project_id}/tasks", response_model=ProjectTaskOut, status_code=201)
+def create_project_task(project_id: UUID, data: ProjectTaskIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    task = ProjectTask(project_id=project.id, owner_id=user.id, **{key: value.strip() if isinstance(value, str) else value for key, value in data.model_dump().items()})
+    project.updated_at = now(); session.add(task); session.add(project); session.commit(); session.refresh(task)
+    return task_output(task)
+
+
+@app.patch("/api/projects/{project_id}/tasks/{task_id}", response_model=ProjectTaskOut)
+def update_project_task(project_id: UUID, task_id: UUID, data: ProjectTaskUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    task = session.get(ProjectTask, task_id)
+    if not task or task.project_id != project.id or task.owner_id != user.id:
+        raise HTTPException(404, "Tarea no encontrada")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(task, key, value.strip() if isinstance(value, str) else value)
+    task.updated_at = now(); project.updated_at = now(); session.add(task); session.add(project); session.commit(); session.refresh(task)
+    return task_output(task)
+
+
+@app.delete("/api/projects/{project_id}/tasks/{task_id}", status_code=204)
+def delete_project_task(project_id: UUID, task_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    task = session.get(ProjectTask, task_id)
+    if not task or task.project_id != project.id or task.owner_id != user.id:
+        raise HTTPException(404, "Tarea no encontrada")
+    session.delete(task); project.updated_at = now(); session.add(project); session.commit()
+
+
+def measurement_output(record: MeasurementRecord) -> MeasurementOut:
+    return MeasurementOut.model_validate(record)
+
+
+@app.get("/api/projects/{project_id}/measurements", response_model=list[MeasurementOut])
+def list_measurements(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    return [measurement_output(record) for record in session.exec(select(MeasurementRecord).where(MeasurementRecord.project_id == project_id, MeasurementRecord.owner_id == user.id).order_by(MeasurementRecord.created_at.desc())).all()]
+
+
+@app.post("/api/projects/{project_id}/measurements", response_model=MeasurementOut, status_code=201)
+def create_measurement(project_id: UUID, data: MeasurementIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    project = owned_project(project_id, user, session)
+    record = MeasurementRecord(project_id=project.id, owner_id=user.id, **{key: value.strip() for key, value in data.model_dump().items()})
+    project.updated_at = now(); session.add(record); session.add(project); session.commit(); session.refresh(record)
+    return measurement_output(record)
 
 
 @app.get("/api/agents", response_model=list[AgentDefinitionOut])
@@ -662,6 +763,9 @@ def delete_project(project_id: UUID, user: User = Depends(current_user), session
     for task in session.exec(select(ApprovalTask).where(ApprovalTask.project_id == project.id)).all(): session.delete(task)
     for run in session.exec(select(AgentRun).where(AgentRun.project_id == project.id)).all(): session.delete(run)
     for note in session.exec(select(CreativeNote).where(CreativeNote.project_id == project.id)).all(): session.delete(note)
+    for task in session.exec(select(ProjectTask).where(ProjectTask.project_id == project.id)).all(): session.delete(task)
+    for measurement in session.exec(select(MeasurementRecord).where(MeasurementRecord.project_id == project.id)).all(): session.delete(measurement)
+    for annotation in session.exec(select(CreativeAnnotation).where(CreativeAnnotation.project_id == project.id)).all(): session.delete(annotation)
     for draft in session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project.id)).all():
         if draft.storage_path: Path(draft.storage_path).unlink(missing_ok=True)
         session.delete(draft)
@@ -1222,9 +1326,40 @@ def creative_visual_media(project_id: UUID, draft_id: UUID, user: User = Depends
 
 
 def creative_output(i:CreativeSubmission)->CreativeOut:return CreativeOut(id=i.id,project_id=i.project_id,name=i.name,medium=i.medium,rationale=i.rationale,filename=i.filename,content_type=i.content_type,size=i.size,verdict=i.verdict,scores=json.loads(i.score_json),evaluation=i.evaluation,model_used=i.model_used,created_at=i.created_at)
+def creative_annotation_output(annotation: CreativeAnnotation) -> CreativeAnnotationOut:
+    return CreativeAnnotationOut.model_validate(annotation)
 @app.get("/api/projects/{project_id}/creative",response_model=list[CreativeOut])
 def list_creative(project_id:UUID,user:User=Depends(current_user),session:Session=Depends(get_session)):
     owned_project(project_id,user,session);return [creative_output(i) for i in session.exec(select(CreativeSubmission).where(CreativeSubmission.project_id==project_id).order_by(CreativeSubmission.created_at.desc())).all()]
+@app.get("/api/projects/{project_id}/creative/{creative_id}/annotations", response_model=list[CreativeAnnotationOut])
+def list_creative_annotations(project_id: UUID, creative_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    creative = session.get(CreativeSubmission, creative_id)
+    if not creative or creative.project_id != project_id or creative.owner_id != user.id:
+        raise HTTPException(404, "Material no encontrado")
+    annotations = session.exec(select(CreativeAnnotation).where(CreativeAnnotation.creative_submission_id == creative.id, CreativeAnnotation.owner_id == user.id).order_by(CreativeAnnotation.created_at.desc())).all()
+    return [creative_annotation_output(annotation) for annotation in annotations]
+
+
+@app.post("/api/projects/{project_id}/creative/{creative_id}/annotations", response_model=CreativeAnnotationOut, status_code=201)
+def create_creative_annotation(project_id: UUID, creative_id: UUID, data: CreativeAnnotationIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    creative = session.get(CreativeSubmission, creative_id)
+    if not creative or creative.project_id != project_id or creative.owner_id != user.id:
+        raise HTTPException(404, "Material no encontrado")
+    annotation = CreativeAnnotation(creative_submission_id=creative.id, project_id=project_id, owner_id=user.id, **data.model_dump())
+    session.add(annotation); session.commit(); session.refresh(annotation)
+    return creative_annotation_output(annotation)
+
+
+@app.patch("/api/projects/{project_id}/creative/{creative_id}/annotations/{annotation_id}", response_model=CreativeAnnotationOut)
+def update_creative_annotation(project_id: UUID, creative_id: UUID, annotation_id: UUID, data: CreativeAnnotationUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    annotation = session.get(CreativeAnnotation, annotation_id)
+    if not annotation or annotation.project_id != project_id or annotation.creative_submission_id != creative_id or annotation.owner_id != user.id:
+        raise HTTPException(404, "Observación no encontrada")
+    annotation.status = data.status; annotation.updated_at = now(); session.add(annotation); session.commit(); session.refresh(annotation)
+    return creative_annotation_output(annotation)
 @app.post("/api/projects/{project_id}/creative",response_model=CreativeOut,status_code=201)
 async def review_creative(project_id:UUID,file:UploadFile=File(...),name:str=Form(...,min_length=2,max_length=250),medium:str=Form(default="",max_length=250),rationale:str=Form(default="",max_length=10000),user:User=Depends(current_user),session:Session=Depends(get_session)):
     p=owned_project(project_id,user,session);d,decision=approved_creative_context(p,user,session)

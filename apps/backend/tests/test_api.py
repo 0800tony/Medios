@@ -65,6 +65,16 @@ def test_mvp_flow():
         assert logo.json()["palette"] == "#153F35, #D9FF43"
         assert client.get(f"/api/clients/{created_client.json()['id']}/brand-assets", headers=headers).json()[0]["id"] == logo.json()["id"]
         assert client.get(f"/api/clients/{created_client.json()['id']}/brand-assets/{logo.json()['id']}/media", headers=headers).content.startswith(b"\x89PNG")
+        task = client.post(f"/api/projects/{project_id}/tasks", headers=headers, json={"title": "Validar punto de venta", "assignee": "Dirección de cuentas", "stage": "medios", "priority": "alta"})
+        assert task.status_code == 201
+        assert client.patch(f"/api/projects/{project_id}/tasks/{task.json()['id']}", headers=headers, json={"status": "in_progress"}).json()["status"] == "in_progress"
+        measurement = client.post(f"/api/projects/{project_id}/measurements", headers=headers, json={"metric": "Rotación semanal", "value": "24", "baseline": "12", "target": "30", "period": "Semana 1", "source": "Distribuidor", "notes": "Piloto inicial"})
+        assert measurement.status_code == 201
+        assert client.get(f"/api/projects/{project_id}/measurements", headers=headers).json()[0]["metric"] == "Rotación semanal"
+        watch = client.post("/api/watches", headers=headers, json={"client_id": created_client.json()["id"], "name": "Competidores de retail", "query": "novedades, campañas y lanzamientos", "kind": "competitor"})
+        assert watch.status_code == 201
+        assert client.patch(f"/api/watches/{watch.json()['id']}", headers=headers, json={"active": False}).json()["active"] is False
+        assert client.get("/api/governance", headers=headers).status_code == 200
         assert client.delete(f"/api/clients/{created_client.json()['id']}", headers=headers).status_code == 409
         brief = client.put(f"/api/projects/{project_id}/brief", headers=headers, json={"data": {"request": "Crecer con evidencia", "business_context": "Mercado competitivo", "product": "Servicio", "business_goal": "Crecer", "commercial_goal": "Generar oportunidades", "communication_goal": "Aumentar confianza", "audience": "Personas decisoras", "competitors": "Alternativas regionales", "proof": "Trayectoria", "restrictions": "Presupuesto acotado", "territory": "Uruguay e Interior", "deadline": "Tres meses"}})
         assert brief.status_code == 200
@@ -188,6 +198,9 @@ def test_mvp_flow():
         assert creative.status_code == 201
         assert creative.json()["verdict"] == "revisar"
         assert "ruta 3" in creative.json()["evaluation"].lower()
+        annotation = client.post(f"/api/projects/{project_id}/creative/{creative.json()['id']}/annotations", headers=headers, json={"author": "Director creativo", "comment": "Revisar jerarquía de marca antes de producir.", "x": 45, "y": 30})
+        assert annotation.status_code == 201
+        assert client.patch(f"/api/projects/{project_id}/creative/{creative.json()['id']}/annotations/{annotation.json()['id']}", headers=headers, json={"status": "resolved"}).json()["status"] == "resolved"
         assert library.json()["title"] == "Confianza en retail"
         assert len(client.get("/api/library?kind=internal_case", headers=headers).json()) == 1
         report = client.get(f"/api/projects/{project_id}/report", headers=headers)

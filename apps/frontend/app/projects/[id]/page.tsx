@@ -3,6 +3,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import WorkflowBoard from "@/components/WorkflowBoard";
+import MeasurementBoard from "@/components/MeasurementBoard";
+import ProjectFlow from "@/components/ProjectFlow";
 import { DocumentItem, EvidenceItem, LibraryItem, Project, RadarSuggestion, request, requestBlob, saveBlob } from "@/lib/api";
 
 type EvidenceMode = "file" | "audio" | "mail" | "reference" | "client_note" | "research";
@@ -151,13 +154,16 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
   return <main className="shell">
     <Nav/>
     <div className="pagehead">
-      <div><p className="eyebrow">Proyecto · {evidenceCount} evidencias</p><h1>{project.name}</h1><span className={`status ${project.status}`}>{project.status}</span></div>
+      <div><p className="eyebrow">1. Pedido y encuadre · {evidenceCount} evidencias</p><h1>{project.name}</h1><span className={`status ${project.status}`}>{project.status}</span></div>
       <div className="page-actions"><Link className="btn lime" href={`/projects/${project.id}/brief`}>Completar brief</Link>{project.result&&<Link className="btn" href={`/projects/${project.id}/result`}>Ver estrategia</Link>}<Link className="btn ghost" href={`/projects/${project.id}/creative`}>Revisar piezas</Link><button className="btn ghost" onClick={()=>setEditingProject(value=>!value)}>{editingProject?"Cancelar edición":"Editar proyecto"}</button></div>
     </div>
+    <ProjectFlow projectId={project.id} current="intake" hasStrategy={!!project.result}/>
+    <WorkflowBoard projectId={project.id}/>
+    <div id="results"><MeasurementBoard projectId={project.id}/></div>
 
     <section className="project-layout">
       <div>
-        <div className="card">
+        <div id="evidence" className="card">
           <p className="eyebrow">Biblioteca de evidencia</p>
           <h2>¿Qué querés incorporar?</h2>
           <div className="tabs">

@@ -28,6 +28,11 @@ export type Foundation={references:{author:string;work:string;lens:string}[];cre
 export type ResearchSource={id:string;name:string;url:string;domain:string;country:string;topic:string;description:string;priority:number;active:boolean;is_foundational:boolean;created_at:string};
 export type CreativeNote={id:string;project_id:string;concept_id:string|null;kind:"idea"|"feedback"|"decision"|"reference";author:string;content:string;status:"open"|"applied"|"discarded";created_at:string;updated_at:string};
 export type ProductionPackage={campaign:string;status:string;strategy:string;deliverables:{pieza:string;formato:string;objetivo:string;guion:string;produccion:string}[];assets:string[];confirmations:string[];handoff:string[]};
+export type ProjectTask={id:string;project_id:string;title:string;description:string;assignee:string;stage:string;status:"pending"|"in_progress"|"blocked"|"done";priority:"alta"|"media"|"baja";due_date:string;created_at:string;updated_at:string};
+export type CreativeAnnotation={id:string;creative_submission_id:string;project_id:string;author:string;comment:string;x:number;y:number;status:"open"|"resolved"|"dismissed";created_at:string;updated_at:string};
+export type Measurement={id:string;project_id:string;metric:string;value:string;baseline:string;target:string;period:string;source:string;notes:string;created_at:string};
+export type MarketWatch={id:string;client_id:string|null;name:string;query:string;kind:"competitor"|"category"|"source_monitor";active:boolean;last_summary:string;last_sources:{title:string;url:string}[];last_checked_at:string|null;created_at:string};
+export type Governance={models:Record<string,string>;audit:{agentes_ejecutados:number;bocetos_generados:number;aprendizajes_aprobados:number};controls:string[];api_configured:boolean};
 
 export function token() { return typeof window === "undefined" ? "" : localStorage.getItem("oliva_token") || ""; }
 export function logout() { localStorage.removeItem("oliva_token"); localStorage.removeItem("oliva_user"); window.location.href = "/login"; }

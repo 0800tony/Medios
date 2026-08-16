@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import ProjectFlow from "@/components/ProjectFlow";
 import { Brief, Project, request } from "@/lib/api";
 
 const groups = [
@@ -52,7 +53,7 @@ export default function BriefPage({ params }: { params: { id: string } }) {
   if (!project || !brief) return <main className="shell"><Nav/><p>{error || "Cargando brief…"}</p></main>;
 
   return <main className="shell"><Nav/>
-    <div className="pagehead"><div><p className="eyebrow">Brief estratégico editable</p><h1>{project.name}</h1></div><div className="page-actions"><Link className="btn ghost" href={`/projects/${project.id}`}>← Proyecto</Link><Link className="btn" href={`/projects/${project.id}/result`}>Ver estrategia existente</Link></div></div>
+    <div className="pagehead"><div><p className="eyebrow">Brief estratégico editable</p><h1>{project.name}</h1></div><div className="page-actions"><Link className="btn ghost" href={`/projects/${project.id}`}>← Proyecto</Link><Link className="btn" href={`/projects/${project.id}/result`}>Ver estrategia existente</Link></div></div><ProjectFlow projectId={project.id} current="brief" hasStrategy={!!project.result}/>
     <section className="brief-progress"><div><strong>Contexto mínimo: {brief.completeness}%</strong><p>Indica que hay respuestas cargadas; las validaciones estratégicas se muestran aparte.</p></div><div className="progress"><span style={{ width: `${brief.completeness}%` }}/></div></section>
     {brief.missing_required.length > 0 && <div className="brief-alert"><strong>Falta información clave</strong><p>{brief.missing_required.join(" · ")}</p></div>}
     <form ref={formRef} className="brief-form" onSubmit={submit}>
