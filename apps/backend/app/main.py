@@ -1321,12 +1321,25 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
     plan_content = json.loads(plan.content_json); board = json.loads(concept.content_json)
     base = plan_content.get("base_aprobada", {}); assets = session.exec(select(BrandAsset).where(BrandAsset.client_id == project.client_id, BrandAsset.owner_id == user.id).order_by(BrandAsset.created_at.desc())).all()
     palette = next((asset.palette for asset in assets if asset.palette.strip()), "#153F35 verde profundo, #D9FF43 lima, #F4F1E9 papel cálido")
+    # El primer boceto no se "encarga": nace de la idea aprobada. Las direcciones
+    # sugeridas por el plan sólo se usan para enriquecer esa lectura, nunca para
+    # volver a pedir al usuario que decida qué visualizar.
+    visual_directions = plan_content.get("bocetos_visuales", [])
+    first_direction = visual_directions[0] if isinstance(visual_directions, list) and visual_directions and isinstance(visual_directions[0], dict) else {}
+    selected_id = str(board.get("selected_territory_id", "")) if isinstance(board, dict) else ""
+    selected_territory = next((item for item in board.get("territorios", []) if isinstance(item, dict) and str(item.get("id", "")) == selected_id), {}) if isinstance(board, dict) else {}
+    campaign_name = str(selected_territory.get("nombre") or base.get("plataforma") or "Campaña aprobada")
+    automatic = data.title == "Boceto de dirección de arte" and not data.focus.strip() and not data.visual_style.strip()
+    title = f"Boceto maestro — {campaign_name}" if automatic else data.title.strip()
+    focus = (str(first_direction.get("prompt_de_produccion") or first_direction.get("direccion") or selected_territory.get("idea_central") or base.get("idea_central") or "la idea central aprobada") if automatic else data.focus.strip())
+    visual_style = (str(selected_territory.get("estilo") or selected_territory.get("tono") or "dirección de arte derivada de la plataforma creativa aprobada") if automatic else data.visual_style.strip())
     prompt = (
-        "Create one high-end advertising concept board, not finished artwork and no readable text. "
-        f"Campaign: {base.get('plataforma', 'approved creative platform')}. Idea: {base.get('idea_central', '')}. "
-        f"Territory: {base.get('territorio', '')}. Format: {data.format}. Focus: {data.focus or 'show the most important campaign execution'}. Visual direction: {data.visual_style or 'derive from the approved platform and brand palette'}. "
-        f"Use OLIVA Publicidad presentation language: editorial grid, warm paper background, deep forest green and acid lime accents, precise black marker annotations, sophisticated Latin American agency pitch aesthetic. Palette: {palette}. "
-        "Show a clear empty area for the real client logo to be overlaid later; never invent logos, words, labels, packaging names, prices or claims. Avoid generic stock advertising, clichés and watermarks."
+        "Create one high-end advertising campaign key visual / previsualization for an agency team, not finished artwork and no readable text. "
+        f"Campaign: {campaign_name}. Approved idea: {selected_territory.get('idea_central') or base.get('idea_central', '')}. "
+        f"Human tension: {selected_territory.get('tension') or ''}. Brand role: {selected_territory.get('rol_de_marca') or ''}. "
+        f"Territory: {base.get('territorio', '')}. Format: {data.format}. Creative focus derived from the approved campaign: {focus}. Visual direction: {visual_style}. "
+        f"The visual scene and creative idea must dominate; use OLIVA Publicidad presentation language only as a subtle framing system: warm paper, deep forest green and acid-lime accents, restrained editorial craft. Palette: {palette}. "
+        "Show a clear empty area for the real client logo to be overlaid later; never invent logos, words, labels, packaging names, prices or claims. Avoid generic stock advertising, clichés, moodboard grids and watermarks."
     )
     try:
         from openai import OpenAI
@@ -1337,7 +1350,7 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
         raw = base64.b64decode(encoded)
     except Exception as exc:
         raise HTTPException(503, "No se generó ningún boceto. La cuenta de OpenAI no tiene cuota disponible para imágenes o la clave no tiene acceso a gpt-image-1.") from exc
-    draft = CreativeVisualDraft(project_id=project.id, plan_id=plan.id, owner_id=user.id, title=data.title.strip(), prompt=prompt, storage_path="", content_type="image/png", status="generated", model_used=settings.openai_image_model)
+    draft = CreativeVisualDraft(project_id=project.id, plan_id=plan.id, owner_id=user.id, title=title, prompt=prompt, storage_path="", content_type="image/png", status="generated", model_used=settings.openai_image_model)
     path = Path(settings.upload_dir) / "creative-visuals" / str(project.id) / f"{draft.id}.png"; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw); draft.storage_path = str(path)
     session.add(draft); session.commit(); session.refresh(draft)
     return creative_visual_output(draft)
