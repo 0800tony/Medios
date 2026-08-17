@@ -17,7 +17,7 @@ from .ingestion import AUDIO_EXTENSIONS, AUDIO_MAX_SIZE, AUDIO_TYPES, EMAIL_MAX_
 from .knowledge import PHOTO_MAX_SIZE, PHOTO_TYPES, analyze_photo, embed_text, index_text, radar_context, relevant_matches
 from .link_reader import read_link
 from .models import AgentRun, ApprovalTask, BrandAsset, Client, ClientMemory, CreativeAnnotation, CreativeConcept, CreativeNote, CreativeProductionPlan, CreativeSubmission, CreativeVisualDraft, Document, EvidenceItem, KnowledgeItem, KnowledgeKind, KnowledgeVector, LearningRecord, LibraryEntry, MarketWatch, MeasurementRecord, Project, ProjectBrief, ProjectKnowledgeLink, ProjectRadarVector, ProjectStatus, ProjectTask, RadarLinkStatus, ResearchSource, StrategyDecision, StrategyDossier, StrategyResult, User, now
-from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeAnnotationIn, CreativeAnnotationOut, CreativeAnnotationUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeNoteIn, CreativeNoteOut, CreativeNoteUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeTableIn, CreativeVisualGenerateIn, CreativeVisualOut, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, MarketWatchIn, MarketWatchOut, MarketWatchUpdateIn, MeasurementIn, MeasurementOut, ProductionPackageOut, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectTaskIn, ProjectTaskOut, ProjectTaskUpdateIn, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, ResearchSourceIn, ResearchSourceOut, ResearchSourceUpdateIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
+from .schemas import AgentDefinitionOut, AgentRunIn, AgentRunOut, ApprovalIn, ApprovalResolveIn, ApprovalTaskOut, BrandAssetOut, BriefIn, BriefOut, ClientIn, ClientMemoryIn, ClientMemoryOut, ClientOut, ClientUpdateIn, CreativeAnnotationIn, CreativeAnnotationOut, CreativeAnnotationUpdateIn, CreativeConceptGenerateIn, CreativeConceptOut, CreativeConceptUpdateIn, CreativeNoteIn, CreativeNoteOut, CreativeNoteUpdateIn, CreativeOut, CreativeProductionPlanOut, CreativeProductionPlanUpdateIn, CreativeTableIn, CreativeVisualGenerateIn, CreativeVisualOut, CreativeVisualUpdateIn, DocumentOut, DocumentTextIn, DossierOut, EmailTextIn, EvidenceIn, FestivalSearchIn, KnowledgeLinkIn, KnowledgeOut, LearningRecordIn, LearningRecordOut, LibraryLinkIn, LibraryOut, LoginIn, MarketWatchIn, MarketWatchOut, MarketWatchUpdateIn, MeasurementIn, MeasurementOut, ProductionPackageOut, ProjectIn, ProjectOut, ProjectResearchIn, ProjectResearchOut, ProjectTaskIn, ProjectTaskOut, ProjectTaskUpdateIn, ProjectUpdateIn, RadarDecisionIn, RadarSuggestionOut, RegisterIn, ResearchSourceIn, ResearchSourceOut, ResearchSourceUpdateIn, StrategyDecisionIn, StrategyDecisionOut, TokenOut, UserOut, UserUpdateIn
 from .strategy import analyze, analyze_dossier, local_dossier
 from .intelligence import creative_table, evaluate_creative, festival_research, generate_campaign_plan, generate_creative_concepts, generate_production_proposals, project_web_research, run_agent
 from .foundations import AGENT_CATALOG, CREATIVE_REFERENCE_LENSES, FESTIVAL_CATALOG, FOUNDATIONAL_REFERENCES, foundational_context
@@ -1293,7 +1293,7 @@ def creative_visual_output(draft: CreativeVisualDraft) -> CreativeVisualOut:
 @app.get("/api/projects/{project_id}/creative-visuals", response_model=list[CreativeVisualOut])
 def list_creative_visuals(project_id: UUID, user: User = Depends(current_user), session: Session = Depends(get_session)):
     owned_project(project_id, user, session)
-    drafts = session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project_id, CreativeVisualDraft.owner_id == user.id).order_by(CreativeVisualDraft.created_at.desc())).all()
+    drafts = session.exec(select(CreativeVisualDraft).where(CreativeVisualDraft.project_id == project_id, CreativeVisualDraft.owner_id == user.id, CreativeVisualDraft.status != "archived").order_by(CreativeVisualDraft.created_at.desc())).all()
     # Retira los marcadores técnicos de una versión anterior: nunca fueron arte ni
     # deben ocupar el lugar de un boceto real solicitado por el equipo.
     legacy = [draft for draft in drafts if "boceto compositivo" in draft.model_used.lower()]
@@ -1319,6 +1319,8 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
     if not settings.openai_api_key:
         raise HTTPException(503, "No se generó ningún boceto: falta configurar una clave de API de OpenAI con acceso a generación de imágenes.")
     plan_content = json.loads(plan.content_json); board = json.loads(concept.content_json)
+    stored_brief = session.exec(select(ProjectBrief).where(ProjectBrief.project_id == project.id)).first()
+    brief_data = json.loads(stored_brief.data_json) if stored_brief else {}
     base = plan_content.get("base_aprobada", {}); assets = session.exec(select(BrandAsset).where(BrandAsset.client_id == project.client_id, BrandAsset.owner_id == user.id).order_by(BrandAsset.created_at.desc())).all()
     palette = next((asset.palette for asset in assets if asset.palette.strip()), "#153F35 verde profundo, #D9FF43 lima, #F4F1E9 papel cálido")
     # El primer boceto no se "encarga": nace de la idea aprobada. Las direcciones
@@ -1333,13 +1335,18 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
     title = f"Boceto maestro — {campaign_name}" if automatic else data.title.strip()
     focus = (str(first_direction.get("prompt_de_produccion") or first_direction.get("direccion") or selected_territory.get("idea_central") or base.get("idea_central") or "la idea central aprobada") if automatic else data.focus.strip())
     visual_style = (str(selected_territory.get("estilo") or selected_territory.get("tono") or "dirección de arte derivada de la plataforma creativa aprobada") if automatic else data.visual_style.strip())
+    scripts = plan_content.get("propuestas_de_produccion", [])
+    script_continuity = "; ".join(str(item.get("pieza", "")) for item in scripts[:5] if isinstance(item, dict))
+    category_context = str(brief_data.get("category") or brief_data.get("industry") or brief_data.get("market_context") or "")
+    competitor_context = str(brief_data.get("competitors") or brief_data.get("competitive_context") or "")
     prompt = (
         "Create one high-end advertising campaign key visual / previsualization for an agency team, not finished artwork and no readable text. "
         f"Campaign: {campaign_name}. Approved idea: {selected_territory.get('idea_central') or base.get('idea_central', '')}. "
         f"Human tension: {selected_territory.get('tension') or ''}. Brand role: {selected_territory.get('rol_de_marca') or ''}. "
         f"Territory: {base.get('territorio', '')}. Format: {data.format}. Creative focus derived from the approved campaign: {focus}. Visual direction: {visual_style}. "
+        f"Mandatory continuity: preserve the approved campaign, its prior scripts ({script_continuity}), category context ({category_context}) and competitive frame ({competitor_context}). Do not invent a different campaign, product positioning, target or visual territory. "
         f"The visual scene and creative idea must dominate; use OLIVA Publicidad presentation language only as a subtle framing system: warm paper, deep forest green and acid-lime accents, restrained editorial craft. Palette: {palette}. "
-        "Show a clear empty area for the real client logo to be overlaid later; never invent logos, words, labels, packaging names, prices or claims. Avoid generic stock advertising, clichés, moodboard grids and watermarks."
+        "Never render any text, letters, numbers, maps, logos, labels, packaging names, prices, arrows or fake annotations inside the image. Do not create a moodboard or presentation board. Avoid generic stock advertising, clichés and watermarks. The OLIVA interface will apply the real branding and typography outside the image."
     )
     try:
         from openai import OpenAI
@@ -1352,6 +1359,17 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
         raise HTTPException(503, "No se generó ningún boceto. La cuenta de OpenAI no tiene cuota disponible para imágenes o la clave no tiene acceso a gpt-image-1.") from exc
     draft = CreativeVisualDraft(project_id=project.id, plan_id=plan.id, owner_id=user.id, title=title, prompt=prompt, storage_path="", content_type="image/png", status="generated", model_used=settings.openai_image_model)
     path = Path(settings.upload_dir) / "creative-visuals" / str(project.id) / f"{draft.id}.png"; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw); draft.storage_path = str(path)
+    session.add(draft); session.commit(); session.refresh(draft)
+    return creative_visual_output(draft)
+
+@app.patch("/api/projects/{project_id}/creative-visuals/{draft_id}", response_model=CreativeVisualOut)
+def update_creative_visual(project_id: UUID, draft_id: UUID, data: CreativeVisualUpdateIn, user: User = Depends(current_user), session: Session = Depends(get_session)):
+    owned_project(project_id, user, session)
+    draft = session.get(CreativeVisualDraft, draft_id)
+    if not draft or draft.project_id != project_id or draft.owner_id != user.id:
+        raise HTTPException(404, "Boceto visual no encontrado")
+    if data.title is not None: draft.title = data.title.strip()
+    if data.status is not None: draft.status = data.status
     session.add(draft); session.commit(); session.refresh(draft)
     return creative_visual_output(draft)
 

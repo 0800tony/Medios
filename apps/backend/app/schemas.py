@@ -316,6 +316,10 @@ class CreativeVisualGenerateIn(BaseModel):
     format: str = Field(default="concept board 3:2", max_length=120)
     visual_style: str = Field(default="", max_length=1000)
 
+class CreativeVisualUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=180)
+    status: str | None = Field(default=None, pattern="^(generated|archived)$")
+
 
 class CreativeTableIn(BaseModel):
     question: str = Field(min_length=8, max_length=6000)
