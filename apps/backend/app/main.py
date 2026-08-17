@@ -111,6 +111,32 @@ def owned_client(client_id: UUID, user: User, session: Session) -> Client:
 
 MEMORY_FIELDS = ("history", "products", "audiences", "competitors", "positioning", "tone", "visual_codes", "restrictions", "approved_patterns", "rejected_patterns", "commercial_context", "territories", "notes")
 
+# Estándar permanente de la etapa de diseño OLIVA. Funciona como criterio de
+# dirección de arte, no como una estética prefabricada ni una imitación de autores.
+OLIVA_ART_DIRECTION_STANDARD = """
+Act as an internationally experienced senior art director. First think, then reduce,
+then design, then self-critique before delivering. The image must communicate a clear
+visual idea, contemporary sophistication, personality, hierarchy, craft and a decision
+behind every element; never an AI-generated sketch, social template or decorative collage.
+Build one visual concept strong enough to become a campaign system. Use editorial
+composition: deliberate grid, proportion, tension, scale, contrast, negative space and a
+single unequivocal visual entry point. Avoid automatic centering, obvious symmetry,
+floating elements, gratuitous backgrounds and excess information.
+Photography must feel art-directed, credible and materially real: coherent light, natural
+proportions, authentic texture, considered casting/styling/scouting and professional post.
+Avoid plastic perfection, generic stock imagery, arbitrary cinematic light, gratuitous
+gradients, neon, 3D, fake interfaces, icons, excessive effects, decorative transparency,
+and any Canva-like layout. Less elements, better decisions.
+Seek one unexpected, intelligent and memorable art-direction decision that makes the idea
+recognizable without sacrificing clarity, effectiveness or real-world adaptability.
+Use the level of reduction, craft and critical rigor associated with major international
+creative and design annuals, without copying a campaign, studio or designer. Do not imitate
+any living artist. Before delivery reject the image if it could belong to any brand or if
+any element can be removed to make it stronger. No text, typography, letters, logos or
+claims are permitted inside this generated raster: the OLIVA interface applies real brand
+assets and controlled typography separately.
+"""
+
 
 def memory_output(memory: ClientMemory) -> ClientMemoryOut:
     return ClientMemoryOut(id=memory.id, client_id=memory.client_id, data=json.loads(memory.data_json), version=memory.version, updated_at=memory.updated_at)
@@ -1339,8 +1365,8 @@ def generate_creative_visual(project_id: UUID, plan_id: UUID, data: CreativeVisu
     script_continuity = "; ".join(str(item.get("pieza", "")) for item in scripts[:5] if isinstance(item, dict))
     category_context = str(brief_data.get("category") or brief_data.get("industry") or brief_data.get("market_context") or "")
     competitor_context = str(brief_data.get("competitors") or brief_data.get("competitive_context") or "")
-    prompt = (
-        "Create one high-end advertising campaign key visual / previsualization for an agency team, not finished artwork and no readable text. "
+    prompt = (OLIVA_ART_DIRECTION_STANDARD + "\n"
+        "Create one high-end advertising campaign key visual / previsualization for an agency team. "
         f"Campaign: {campaign_name}. Approved idea: {selected_territory.get('idea_central') or base.get('idea_central', '')}. "
         f"Human tension: {selected_territory.get('tension') or ''}. Brand role: {selected_territory.get('rol_de_marca') or ''}. "
         f"Territory: {base.get('territorio', '')}. Format: {data.format}. Creative focus derived from the approved campaign: {focus}. Visual direction: {visual_style}. "
