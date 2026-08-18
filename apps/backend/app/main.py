@@ -1023,13 +1023,17 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
         )
         full_context=f"{source_manifest}\n\nCLIENTE:\n{client_context}\n\nMEMORIA DEL CLIENTE (no es evidencia nueva):\n{json.dumps(memory_context, ensure_ascii=False)}\n\nMARCO METODOLÓGICO OLIVA (criterio, no evidencia de cliente):\n{foundational_context()}\n\n{file_context}\n\n{evidence_context}\n\n{radar_context(selected_radar)}\n\n{library_context}\n\n{learning_context}"
         data = analyze(project, full_context, client_context)
+        # StrategyResult es el resumen legado que alimenta la vista inicial; la
+        # IA actual puede devolver diagnóstico estructurado. Lo preservamos sin
+        # perder información, serializándolo para las columnas de texto.
+        legacy_data = {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value) for key, value in data.items()}
         existing = project.result
         if existing:
-            for key, value in data.items():
+            for key, value in legacy_data.items():
                 setattr(existing, key, value)
             session.add(existing)
         else:
-            session.add(StrategyResult(project_id=project.id, **data))
+            session.add(StrategyResult(project_id=project.id, **legacy_data))
         stored_brief=session.exec(select(ProjectBrief).where(ProjectBrief.project_id==project.id)).first();brief_data=json.loads(stored_brief.data_json) if stored_brief else {"request":project.brief,"communication_goal":project.objective};source_names=[d.filename for d in project.documents]+[e.title for e in project.evidence_items]+[f"Radar OLIVA: {i.title}" for i in selected_radar]+[f"Biblioteca OLIVA: {i.title}" for i in library_items]+[f"Aprendizaje OLIVA: {record.title}" for record in learned]+[f"Marco OLIVA: {reference['author']}" for reference in FOUNDATIONAL_REFERENCES];dossier_data,dossier_model=analyze_dossier(project,brief_data,full_context,source_names);previous=session.exec(select(StrategyDossier).where(StrategyDossier.project_id==project.id).order_by(StrategyDossier.version.desc())).first();dossier=StrategyDossier(project_id=project.id,version=previous.version+1 if previous else 1,content_json=json.dumps(dossier_data,ensure_ascii=False),model_used=dossier_model);session.add(dossier);session.flush()
         decision=session.exec(select(StrategyDecision).where(StrategyDecision.project_id==project.id)).first()
         if decision and dossier_data.get(decision.route_key):
@@ -1038,6 +1042,7 @@ def analyze_project(project_id: UUID, user: User = Depends(current_user), sessio
         project.status = ProjectStatus.completed
         project.workflow_stage = "estrategia"
     except Exception:
+        session.rollback()
         project.status = ProjectStatus.failed
         session.add(project); session.commit()
         raise HTTPException(502, "No se pudo completar el análisis")
